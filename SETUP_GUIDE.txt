@@ -1,0 +1,205 @@
+# YAPAPA - Complete Setup Guide
+# Written for Firebase Console (2025) + GitHub (2025)
+# Everything here is 100% FREE
+
+=======================================================
+STEP 1: CREATE FIREBASE PROJECT
+=======================================================
+
+1. Go to: https://console.firebase.google.com
+2. Click the big "+ Add project" card
+3. Enter project name: yapapa (or anything you like)
+4. Click Continue
+5. On "Google Analytics" screen → Toggle OFF (not needed) → Click "Create project"
+6. Wait a few seconds → Click "Continue"
+
+You are now inside your Firebase project dashboard.
+
+=======================================================
+STEP 2: ADD ANDROID APP TO FIREBASE
+=======================================================
+
+1. On the project dashboard, click the Android icon (looks like a robot)
+2. In "Android package name" field, type exactly:
+   com.yapapa.app
+3. In "App nickname" type: Yapapa
+4. Leave "Debug signing certificate" EMPTY
+5. Click "Register app"
+6. Click "Download google-services.json"
+   → SAVE THIS FILE. You will need it later.
+7. Click "Next" → "Next" → "Continue to console"
+   (ignore the SDK instructions shown, we handle that already)
+
+=======================================================
+STEP 3: ENABLE AUTHENTICATION
+=======================================================
+
+1. In left sidebar, click "Build" → "Authentication"
+2. Click "Get started"
+3. Under "Sign-in providers", click "Anonymous"
+4. Toggle it ON → Click "Save"
+   (We use username+PIN stored in Firestore, Anonymous auth handles sessions)
+
+=======================================================
+STEP 4: SET UP FIRESTORE DATABASE
+=======================================================
+
+1. In left sidebar, click "Build" → "Firestore Database"
+2. Click "Create database"
+3. Select "Start in test mode" → Click "Next"
+   (We will add proper rules after setup)
+4. Choose server location: Choose the one closest to you
+   (For Bangladesh: asia-south1 is good)
+5. Click "Enable"
+6. Wait for it to set up
+
+Now set Security Rules:
+1. Click the "Rules" tab at the top
+2. DELETE all existing text
+3. Paste this exactly:
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
+
+4. Click "Publish"
+
+=======================================================
+STEP 5: SET UP REALTIME DATABASE (for Chat)
+=======================================================
+
+1. In left sidebar, click "Build" → "Realtime Database"
+2. Click "Create Database"
+3. Choose location: United States (default is fine)
+4. Select "Start in test mode" → Click "Enable"
+5. Click the "Rules" tab
+6. Replace all text with:
+
+{
+  "rules": {
+    ".read": "auth != null",
+    ".write": "auth != null"
+  }
+}
+
+7. Click "Publish"
+
+=======================================================
+STEP 6: SET UP CLOUD MESSAGING (Push Notifications)
+=======================================================
+
+1. In left sidebar, click the gear icon ⚙️ → "Project settings"
+2. Click "Cloud Messaging" tab
+3. You will see "Server key" and "Sender ID"
+   → WRITE DOWN the "Sender ID" number (you need it later)
+4. Scroll down to find "Web Push certificates" → Click "Generate key pair"
+   → SAVE the key shown (called VAPID key)
+
+=======================================================
+STEP 7: GET YOUR FIREBASE CONFIG VALUES
+=======================================================
+
+1. Click gear icon ⚙️ → "Project settings"
+2. Scroll down to "Your apps" section
+3. Click on the Android app you created
+4. You will see values like:
+   - Project ID
+   - App ID  
+   - API Key
+5. Keep this page open — you need these values for STEP 9
+
+=======================================================
+STEP 8: CREATE GITHUB REPOSITORY
+=======================================================
+
+1. Go to: https://github.com
+2. Sign in or create free account
+3. Click the "+" icon (top right) → "New repository"
+4. Repository name: yapapa
+5. Set to "Public" (required for free GitHub Actions)
+6. Check "Add a README file"
+7. Click "Create repository"
+
+=======================================================
+STEP 9: ADD SECRET TO GITHUB (For google-services.json)
+=======================================================
+
+This keeps your Firebase config safe:
+
+1. In your GitHub repository, click "Settings" tab
+2. In left sidebar, click "Secrets and variables" → "Actions"
+3. Click "New repository secret"
+4. Name: GOOGLE_SERVICES_JSON
+5. Value: Open the google-services.json file you downloaded
+         Select ALL text inside it → Copy → Paste into the Value box
+6. Click "Add secret"
+
+=======================================================
+STEP 10: UPLOAD PROJECT FILES TO GITHUB
+=======================================================
+
+Option A - Using GitHub Website (Easiest, no Git needed):
+
+1. Go to your repository on GitHub
+2. Click "Add file" → "Upload files"
+3. Upload ALL the files and folders I give you
+   IMPORTANT: Keep the folder structure exactly as given
+4. At the bottom, click "Commit changes"
+
+Option B - Using Git (if you have it installed):
+1. git clone https://github.com/YOURUSERNAME/yapapa.git
+2. Copy all project files into the cloned folder
+3. git add .
+4. git commit -m "Initial commit"
+5. git push
+
+=======================================================
+STEP 11: DOWNLOAD YOUR APK
+=======================================================
+
+After uploading files:
+1. Go to your GitHub repository
+2. Click "Actions" tab at the top
+3. You will see "Build Yapapa APK" workflow running (yellow circle)
+4. Wait 5-10 minutes for it to finish (turns green ✅)
+5. Click on the completed run
+6. Scroll to the bottom → Under "Artifacts" → Click "yapapa-release-apk"
+7. Download the ZIP → Extract it → Inside is your APK file
+8. Transfer APK to your Android phone
+9. On phone: Allow "Install from unknown sources" in settings
+10. Tap the APK to install
+
+=======================================================
+FIRESTORE DATA CLEANUP (Auto-delete old data)
+=======================================================
+
+To auto-delete old chats (1 month) and old budget data (6 months):
+We handle this INSIDE the app using timestamps.
+Every time the app opens, it checks and deletes expired records.
+No Cloud Functions needed — stays within free tier!
+
+=======================================================
+TROUBLESHOOTING
+=======================================================
+
+❌ Build fails with "google-services.json not found"
+→ Make sure GOOGLE_SERVICES_JSON secret is added correctly in Step 9
+
+❌ Build fails with Java error
+→ The build.yml already sets Java 17, this should not happen
+
+❌ App installs but crashes immediately
+→ Double check your google-services.json is from the correct Firebase project
+
+❌ App says "permission denied"
+→ Make sure Firestore rules were published correctly in Step 4
+
+=======================================================
+THAT'S IT! 
+Ready for app files → Wait for my next parts
+=======================================================

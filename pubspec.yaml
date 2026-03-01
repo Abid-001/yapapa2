@@ -1,0 +1,49 @@
+name: yapapa
+description: A social accountability app for friends.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Firebase
+  firebase_core: ^2.27.1
+  firebase_auth: ^4.17.9
+  cloud_firestore: ^4.15.9
+  firebase_database: ^10.4.9
+  firebase_messaging: ^14.7.20
+
+  # Local notifications
+  flutter_local_notifications: ^17.1.2
+
+  # Session storage
+  shared_preferences: ^2.2.3
+
+  # Screentime (Android UsageStats)
+  app_usage: ^3.0.1
+
+  # Date/time formatting
+  intl: ^0.19.0
+
+  # State management
+  provider: ^6.1.2
+
+  # UI helpers
+  flutter_svg: ^2.0.10+1
+  google_fonts: ^6.2.1
+  percent_indicator: ^4.2.3
+  fl_chart: ^0.67.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/

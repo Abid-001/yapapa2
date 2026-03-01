@@ -1,0 +1,308 @@
+
+╔══════════════════════════════════════════════════════════════════╗
+║                    YAPAPA - FINAL UPLOAD GUIDE                  ║
+║                   Read this top to bottom!                      ║
+╚══════════════════════════════════════════════════════════════════╝
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 0: YOUR COMPLETE FILE STRUCTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+yapapa/                              ← ROOT (upload everything inside here)
+│
+├── .github/
+│   └── workflows/
+│       └── build.yml                ← GitHub auto-build APK
+│
+├── android/
+│   ├── app/
+│   │   ├── src/
+│   │   │   └── main/
+│   │   │       ├── AndroidManifest.xml
+│   │   │       ├── kotlin/
+│   │   │       │   └── com/yapapa/app/
+│   │   │       │       └── MainActivity.kt
+│   │   │       └── res/
+│   │   │           └── values/
+│   │   │               └── styles.xml
+│   │   ├── build.gradle
+│   │   └── google-services.json     ← YOU ADD THIS (from Firebase)
+│   ├── gradle/
+│   │   └── wrapper/
+│   │       └── gradle-wrapper.properties
+│   ├── build.gradle
+│   ├── gradle.properties
+│   └── settings.gradle
+│
+├── assets/
+│   └── images/
+│       └── .gitkeep
+│
+├── lib/
+│   ├── main.dart
+│   ├── models/
+│   │   ├── chat_message.dart
+│   │   ├── expense_model.dart
+│   │   ├── group_model.dart
+│   │   ├── preset_message.dart
+│   │   ├── screentime_model.dart
+│   │   └── user_model.dart
+│   ├── screens/
+│   │   ├── admin_settings_screen.dart
+│   │   ├── budget_screen.dart
+│   │   ├── chat_screen.dart
+│   │   ├── home_screen.dart
+│   │   ├── leaderboard_screen.dart
+│   │   ├── login_screen.dart
+│   │   ├── main_shell.dart
+│   │   ├── preset_notification_sheet.dart
+│   │   ├── screentime_screen.dart
+│   │   ├── splash_screen.dart
+│   │   └── usage_permission_screen.dart
+│   ├── services/
+│   │   ├── auth_service.dart
+│   │   ├── budget_service.dart
+│   │   ├── connectivity_service.dart
+│   │   ├── group_listener_service.dart
+│   │   ├── notification_service.dart
+│   │   └── screentime_service.dart
+│   ├── theme/
+│   │   └── app_theme.dart
+│   └── widgets/
+│       └── common_widgets.dart
+│
+├── .gitignore
+├── firestore.indexes.json
+├── firestore.rules
+├── pubspec.yaml
+└── SETUP_GUIDE.txt                  ← Firebase setup instructions
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 1: COMPLETE FIREBASE SETUP (Do this FIRST before GitHub)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+See SETUP_GUIDE.txt for full Firebase instructions.
+Quick summary:
+  1. Create Firebase project at console.firebase.google.com
+  2. Add Android app with package name: com.yapapa.app
+  3. Download google-services.json
+  4. Enable Anonymous Authentication
+  5. Create Firestore Database (test mode → add rules from firestore.rules)
+  6. Create Realtime Database (test mode)
+  7. Enable Cloud Messaging
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 2: ADD FIRESTORE INDEXES (Important - do this early)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The app uses compound queries that need indexes in Firestore.
+Add them manually:
+
+1. Go to Firebase Console → Firestore → Indexes tab
+2. Click "Add Index" for each of these:
+
+  Index 1:
+    Collection: expenses
+    Fields: uid (Ascending), date (Descending)
+
+  Index 2:
+    Collection: expenses
+    Fields: uid (Ascending), date (Ascending)
+
+  Index 3:
+    Collection: screentime
+    Fields: uid (Ascending), date (Descending)
+
+  Index 4:
+    Collection: screentime
+    Fields: uid (Ascending), date (Ascending)
+
+  Index 5:
+    Collection: pokes
+    Fields: targetUid (Ascending), timestamp (Ascending)
+
+NOTE: Indexes take 2-5 minutes to build. The app works without them
+but some queries will fail until they are ready.
+Alternatively, if you get an error in the app with a Firebase link,
+click that link - it will auto-create the index for you!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 3: CREATE GITHUB REPOSITORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Go to github.com → Sign in
+2. Click "+" → "New repository"
+3. Name: yapapa
+4. Set to PUBLIC (required for free Actions)
+5. Check "Add a README file"
+6. Click "Create repository"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 4: ADD google-services.json AS A SECRET
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. In your GitHub repo → click "Settings" tab
+2. Left sidebar → "Secrets and variables" → "Actions"
+3. Click "New repository secret"
+4. Name:  GOOGLE_SERVICES_JSON
+5. Value: Open your google-services.json file in Notepad
+          Select ALL text (Ctrl+A) → Copy → Paste here
+6. Click "Add secret"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 5: UPLOAD FILES TO GITHUB
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPORTANT: Upload the CONTENTS of the yapapa folder, not the
+yapapa folder itself. GitHub should see pubspec.yaml at the root.
+
+Method: GitHub Website (No Git needed)
+
+A) Upload root files first:
+   - In your repo, click "Add file" → "Upload files"
+   - Drag and drop these files from your yapapa folder:
+       pubspec.yaml
+       .gitignore
+       firestore.rules
+       firestore.indexes.json
+   - Click "Commit changes"
+
+B) Upload lib folder:
+   - Click "Add file" → "Upload files"
+   - Open your yapapa/lib folder on your computer
+   - Select ALL files and folders inside lib/
+   - Drag them into the GitHub upload area
+   - In the box above "Commit changes", type the path:
+       lib/
+   - Click "Commit changes"
+
+   Repeat for each subfolder:
+   lib/models/ → upload all .dart files there
+   lib/screens/ → upload all .dart files there
+   lib/services/ → upload all .dart files there
+   lib/theme/ → upload app_theme.dart
+   lib/widgets/ → upload common_widgets.dart
+
+C) Upload android folder (same method):
+   android/app/build.gradle
+   android/app/src/main/AndroidManifest.xml
+   android/app/src/main/kotlin/com/yapapa/app/MainActivity.kt
+   android/app/src/main/res/values/styles.xml
+   android/build.gradle
+   android/gradle.properties
+   android/settings.gradle
+   android/gradle/wrapper/gradle-wrapper.properties
+
+D) Upload .github folder:
+   .github/workflows/build.yml
+
+E) Upload assets:
+   assets/images/.gitkeep
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 6: TRIGGER THE BUILD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+The build triggers automatically when you push to main branch.
+Or manually:
+1. In your repo, click "Actions" tab
+2. Click "Build Yapapa APK" on the left
+3. Click "Run workflow" → "Run workflow"
+4. Wait 8-12 minutes
+5. Click the completed run → scroll to "Artifacts"
+6. Download "yapapa-release-apk"
+7. Unzip → you get app-release.apk
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 7: INSTALL APK ON YOUR PHONE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Transfer app-release.apk to your Android phone
+   (via USB, WhatsApp to yourself, Google Drive, etc.)
+2. On your phone: Settings → Security (or Apps)
+   → Enable "Install from unknown sources" or
+     "Allow from this source"
+3. Open the APK file → Install
+4. Open Yapapa!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+STEP 8: FIRST TIME SETUP IN APP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. ONE person creates the group (tap "Create" tab)
+   → Enter username + PIN → tap "Create Group"
+   → You will see your 6-character invite code on Home screen
+
+2. Share that invite code with your friends
+
+3. Friends tap "Join" tab → enter username, invite code, PIN
+
+4. After joining, go to Settings (gear icon) → set expense types
+   (default: Food, Transport, Shopping, Other — admin can add more)
+
+5. Each person goes to Screentime → tap "Set" to set daily limit
+
+6. Done! Start tracking!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+❌ Build fails: "google-services.json not found"
+   → Check GOOGLE_SERVICES_JSON secret is added in GitHub
+   → Make sure the value is the ENTIRE content of the JSON file
+
+❌ Build fails: "Could not find flutter.sdk"
+   → The build.yml handles this automatically with subosito/flutter-action
+   → Make sure build.yml is in .github/workflows/ exactly
+
+❌ Build fails: Gradle error / Java version
+   → build.yml already sets Java 17. If it still fails, re-run workflow.
+
+❌ App opens but shows blank/crashes immediately
+   → The google-services.json secret has wrong content
+   → Re-download from Firebase and re-paste into the secret
+
+❌ Screentime shows 0 or nothing
+   → You need to grant "Usage Access" permission
+   → Phone Settings → Digital Wellbeing / Apps → Special App Access
+     → Usage Access → Find Yapapa → Turn ON
+
+❌ "Failed to join group" error
+   → Double-check the invite code (case-sensitive, 6 chars)
+   → Make sure Firestore is in test mode with correct rules
+
+❌ App installed but no notifications
+   → Go to Phone Settings → Apps → Yapapa → Notifications → Allow All
+
+❌ Leaderboard shows "No data"
+   → Everyone needs to add at least one expense
+   → Screentime needs at least one day of data synced
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+USAGE TIPS FOR YOUR FRIENDS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• Open the app at least once per day for screentime to sync
+• Add expenses same day so you don't forget
+• Leaderboard updates every time you pull to refresh
+• The bell icon 🔔 (top right) sends preset notifications
+• Screentime poke button is in the Leaderboard → Screentime tab
+• Admin can add/remove expense types in Settings
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DATA RETENTION SUMMARY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• Chat messages    → deleted after 30 days  (auto on app open)
+• Expenses         → deleted after 6 months (auto on app open)
+• Screentime       → deleted after 2 months (auto on app open)
+• Preset messages  → never deleted (unless you remove them)
+• Poke records     → deleted after firing
+
+All cleanup runs on the device - no Cloud Functions needed!
+Stays within Firebase free tier.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ALL DONE! YAPAPA IS COMPLETE 🎉
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
