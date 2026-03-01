@@ -150,7 +150,7 @@ class AuthService extends ChangeNotifier {
         return _errorMessage;
       }
 
-      final groupData = query.docs.first.data();
+      final groupData = query.docs.first.data() as Map<String, dynamic>;
       final group = GroupModel.fromMap(groupData);
 
       if (group.memberUids.length >= 10) {
@@ -236,7 +236,7 @@ class AuthService extends ChangeNotifier {
         return _errorMessage;
       }
 
-      final group = GroupModel.fromMap(query.docs.first.data());
+      final group = GroupModel.fromMap(query.docs.first.data() as Map<String, dynamic>);
 
       // Find user in group
       final userQuery = await _db
@@ -252,11 +252,12 @@ class AuthService extends ChangeNotifier {
         return _errorMessage;
       }
 
-      final user = UserModel.fromMap(userQuery.docs.first.data());
+      final user = UserModel.fromMap(userQuery.docs.first.data() as Map<String, dynamic>);
 
       // Verify PIN
       final pinDoc = await _db.collection('pins').doc(user.uid).get();
-      if (!pinDoc.exists || pinDoc.data()!['pin'] != _hashPin(pin)) {
+      final pinData = pinDoc.data() as Map<String, dynamic>?;
+      if (!pinDoc.exists || pinData == null || pinData['pin'] != _hashPin(pin)) {
         _errorMessage = 'Incorrect PIN.';
         notifyListeners();
         return _errorMessage;

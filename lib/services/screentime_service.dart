@@ -85,7 +85,7 @@ class ScreentimeService {
           .orderBy('date', descending: true)
           .get();
       return snap.docs
-          .map((d) => ScreentimeModel.fromMap(d.data()))
+          .map((d) => ScreentimeModel.fromMap(d.data() as Map<String, dynamic>))
           .toList();
     } catch (_) {
       return [];
@@ -113,7 +113,7 @@ class ScreentimeService {
         for (final uid in memberUids) uid: 0,
       };
       for (final doc in snap.docs) {
-        final s = ScreentimeModel.fromMap(doc.data());
+        final s = ScreentimeModel.fromMap(doc.data() as Map<String, dynamic>);
         if (totals.containsKey(s.uid)) {
           totals[s.uid] = totals[s.uid]! + s.totalMinutes;
         }

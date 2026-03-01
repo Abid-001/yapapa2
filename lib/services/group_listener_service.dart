@@ -10,7 +10,6 @@ import 'notification_service.dart';
 class GroupListenerService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  // Keep references so we can cancel when logging out
   Stream<QuerySnapshot>? _pokeStream;
   Stream<QuerySnapshot>? _notifStream;
 
@@ -42,16 +41,17 @@ class GroupListenerService {
     _pokeStream!.listen((snap) async {
       for (final change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          if (data == null) continue;
+          final rawData = change.doc.data();
+          if (rawData == null) continue;
+          // Cast to Map so we can use [] operator safely
+          final data = rawData as Map<String, dynamic>;
 
           final pokeKey = 'poke_seen_${change.doc.id}';
           final prefs = await SharedPreferences.getInstance();
           final alreadySeen = prefs.getBool(pokeKey) ?? false;
 
           if (!alreadySeen) {
-            await NotificationService.showScreentimePoke(
-                'Your friend');
+            await NotificationService.showScreentimePoke('Your friend');
             await prefs.setBool(pokeKey, true);
 
             // Auto-clean poke after firing so it doesn't repeat
@@ -82,33 +82,30 @@ class GroupListenerService {
     _notifStream!.listen((snap) async {
       for (final change in snap.docChanges) {
         if (change.type == DocumentChangeType.added) {
-          final data = change.doc.data();
-          if (data == null) continue;
+          final rawData = change.doc.data();
+          if (rawData == null) continue;
+          // Cast to Map so we can use [] operator safely
+          final data = rawData as Map<String, dynamic>;
 
           final notifKey = 'notif_seen_${change.doc.id}';
           final prefs = await SharedPreferences.getInstance();
           final alreadySeen = prefs.getBool(notifKey) ?? false;
 
           if (!alreadySeen) {
-            final senderName =
-                data['senderName'] as String? ?? 'Someone';
+            final senderName = data['senderName'] as String? ?? 'Someone';
             final text = data['text'] as String? ?? '';
 
-            // Don't notify the sender about their own message
-            // We check by comparing username since we don't store senderUid in notifications
             if (senderName != currentUsername) {
-              await NotificationService.showPresetMessage(
-                  senderName, text);
+              await NotificationService.showPresetMessage(senderName, text);
             }
 
             await prefs.setBool(notifKey, true);
 
-            // Clean up old notification docs (keep Firestore lean)
+            // Clean up old notification docs
             try {
               final ts = data['timestamp'] as int? ?? 0;
               final age = DateTime.now().millisecondsSinceEpoch - ts;
               if (age > 60000) {
-                // older than 1 minute
                 await change.doc.reference.delete();
               }
             } catch (_) {}

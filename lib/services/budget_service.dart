@@ -61,7 +61,7 @@ class BudgetService {
         .orderBy('date', descending: true)
         .snapshots()
         .map((s) => s.docs
-            .map((d) => ExpenseModel.fromMap(d.data()))
+            .map((d) => ExpenseModel.fromMap(d.data() as Map<String, dynamic>))
             .toList());
   }
 
@@ -82,7 +82,7 @@ class BudgetService {
         .orderBy('date', descending: true)
         .snapshots()
         .map((s) => s.docs
-            .map((d) => ExpenseModel.fromMap(d.data()))
+            .map((d) => ExpenseModel.fromMap(d.data() as Map<String, dynamic>))
             .toList());
   }
 
@@ -105,7 +105,7 @@ class BudgetService {
           .get();
       final Map<String, double> summary = {};
       for (final doc in snap.docs) {
-        final e = ExpenseModel.fromMap(doc.data());
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
         summary[e.categoryType] =
             (summary[e.categoryType] ?? 0) + e.amount;
       }
@@ -133,7 +133,7 @@ class BudgetService {
           .get();
       final Map<String, double> totals = {for (final uid in memberUids) uid: 0};
       for (final doc in snap.docs) {
-        final e = ExpenseModel.fromMap(doc.data());
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
         if (totals.containsKey(e.uid)) {
           totals[e.uid] = totals[e.uid]! + e.amount;
         }
@@ -166,7 +166,7 @@ class BudgetService {
         for (final t in types) t: {for (final uid in memberUids) uid: 0},
       };
       for (final doc in snap.docs) {
-        final e = ExpenseModel.fromMap(doc.data());
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
         if (typeTotals.containsKey(e.categoryType) &&
             typeTotals[e.categoryType]!.containsKey(e.uid)) {
           typeTotals[e.categoryType]![e.uid] =
