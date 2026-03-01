@@ -16,13 +16,11 @@ import 'screens/usage_permission_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Lock to portrait mode
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
   ]);
 
-  // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -32,13 +30,9 @@ void main() async {
     ),
   );
 
-  // Initialize Firebase
   await Firebase.initializeApp();
-
-  // Initialize notifications
   await NotificationService.initialize();
 
-  // Get saved session
   final prefs = await SharedPreferences.getInstance();
   final savedUid = prefs.getString('session_uid');
   final savedGroupId = prefs.getString('session_group_id');
@@ -47,8 +41,7 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(
-          create: (_) => AuthService()
-            ..initSession(savedUid, savedGroupId),
+          create: (_) => AuthService()..initSession(savedUid, savedGroupId),
         ),
         ChangeNotifierProvider(
           create: (_) => ConnectivityService(),
@@ -91,10 +84,11 @@ class _AppRouterState extends State<AppRouter> {
   }
 
   Future<void> _checkPermission() async {
-    final show = await shouldShowUsagePermission();
+    final prefs = await SharedPreferences.getInstance();
+    final shown = prefs.getBool('usage_permission_shown') ?? false;
     if (mounted) {
       setState(() {
-        _showUsagePermission = show;
+        _showUsagePermission = !shown;
         _checkingPermission = false;
       });
     }
@@ -108,10 +102,9 @@ class _AppRouterState extends State<AppRouter> {
       return const SplashScreen();
     }
 
-    // Show usage permission screen once on first login
     if (auth.currentUser != null && _showUsagePermission) {
       return UsagePermissionScreen(
-        onDone: () => setState(() => _showUsagePermission = false),
+        onContinue: () => setState(() => _showUsagePermission = false),
       );
     }
 
