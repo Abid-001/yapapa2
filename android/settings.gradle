@@ -23,13 +23,9 @@ plugins {
     id "com.google.gms.google-services" version "4.4.2" apply false
 }
 
-dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// NOTE: No dependencyResolutionManagement block here.
+// Flutter needs to add its own engine repositories at build time.
+// Adding PREFER_SETTINGS breaks that and causes "Could not find io.flutter" errors.
 
 rootProject.name = "yapapa"
 include ":app"
