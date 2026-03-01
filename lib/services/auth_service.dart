@@ -137,6 +137,10 @@ class AuthService extends ChangeNotifier {
   }) async {
     _errorMessage = null;
     try {
+      // Sign in anonymously FIRST so Firestore rules (auth != null) allow reads
+      final cred = await _auth.signInAnonymously();
+      final uid = cred.user!.uid;
+
       // Find group by invite code
       final query = await _db
           .collection('groups')
@@ -145,6 +149,7 @@ class AuthService extends ChangeNotifier {
           .get();
 
       if (query.docs.isEmpty) {
+        await _auth.signOut();
         _errorMessage = 'Invalid invite code. Please check and try again.';
         notifyListeners();
         return _errorMessage;
@@ -153,8 +158,9 @@ class AuthService extends ChangeNotifier {
       final groupData = query.docs.first.data() as Map<String, dynamic>;
       final group = GroupModel.fromMap(groupData);
 
-      if (group.memberUids.length >= 10) {
-        _errorMessage = 'This group is full (max 10 members).';
+      if (group.memberUids.length >= 20) {
+        await _auth.signOut();
+        _errorMessage = 'This group is full (max 20 members).';
         notifyListeners();
         return _errorMessage;
       }
@@ -167,13 +173,11 @@ class AuthService extends ChangeNotifier {
           .get();
 
       if (existingUsers.docs.isNotEmpty) {
+        await _auth.signOut();
         _errorMessage = 'This username is already taken in this group.';
         notifyListeners();
         return _errorMessage;
       }
-
-      final cred = await _auth.signInAnonymously();
-      final uid = cred.user!.uid;
       final now = DateTime.now();
 
       final user = UserModel(
@@ -280,6 +284,29 @@ class AuthService extends ChangeNotifier {
       _errorMessage = 'Login failed. Please try again.';
       notifyListeners();
       return _errorMessage;
+    }
+  }
+
+  Future<String?> removeMember(String targetUid) async {
+    if (_currentUser == null || _currentGroup == null) return 'Not logged in';
+    if (!_currentUser!.isAdmin) return 'Only admin can remove members';
+    if (targetUid == _currentUser!.uid) return 'You cannot remove yourself';
+    try {
+      final batch = _db.batch();
+      batch.update(_db.collection('groups').doc(_currentGroup!.groupId), {
+        'memberUids': FieldValue.arrayRemove([targetUid]),
+      });
+      batch.delete(_db.collection('users').doc(targetUid));
+      batch.delete(_db.collection('pins').doc(targetUid));
+      await batch.commit();
+      final updatedUids = _currentGroup!.memberUids
+          .where((id) => id != targetUid)
+          .toList();
+      _currentGroup = _currentGroup!.copyWith(memberUids: updatedUids);
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return 'Failed to remove member. Try again.';
     }
   }
 

@@ -97,6 +97,49 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
+  void _showRemoveDialog(UserModel member) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(
+          'Remove Member?',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+        ),
+        content: Text(
+          'Remove ${member.username} from the group? They will need to rejoin with the invite code.',
+          style: GoogleFonts.inter(
+              fontSize: 14, color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.error),
+            onPressed: () async {
+              Navigator.pop(context);
+              final err = await context
+                  .read<AuthService>()
+                  .removeMember(member.uid);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(err ??
+                        '${member.username} has been removed.'),
+                  ),
+                );
+              }
+            },
+            child: const Text('Remove',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
@@ -147,7 +190,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   const Divider(color: AppTheme.divider, height: 1),
                   _InfoRow(
                     label: 'Members',
-                    value: '${group.memberUids.length} / 10',
+                    value: '${group.memberUids.length} / 20',
                   ),
                 ],
               ),
@@ -276,6 +319,18 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                                       ),
                                       child:
                                           const Text('Make Admin'),
+                                    ),
+                                  // Remove member button
+                                  if (user.isAdmin &&
+                                      member.uid != user.uid)
+                                    IconButton(
+                                      icon: const Icon(
+                                          Icons.person_remove_rounded,
+                                          size: 18,
+                                          color: AppTheme.error),
+                                      tooltip: 'Remove member',
+                                      onPressed: () =>
+                                          _showRemoveDialog(member),
                                     ),
                                 ],
                               ),
