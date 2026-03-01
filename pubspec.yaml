@@ -11,17 +11,17 @@ dependencies:
     sdk: flutter
 
   # Firebase
-  firebase_core: ^2.27.1
-  firebase_auth: ^4.17.9
-  cloud_firestore: ^4.15.9
-  firebase_database: ^10.4.9
-  firebase_messaging: ^14.7.20
+  firebase_core: ^2.32.0
+  firebase_auth: ^4.20.0
+  cloud_firestore: ^4.17.5
+  firebase_database: ^10.5.7
+  firebase_messaging: ^14.9.4
 
   # Local notifications
-  flutter_local_notifications: ^17.1.2
+  flutter_local_notifications: ^17.2.4
 
   # Session storage
-  shared_preferences: ^2.2.3
+  shared_preferences: ^2.3.3
 
   # Screentime (Android UsageStats)
   app_usage: ^3.0.1
@@ -32,8 +32,7 @@ dependencies:
   # State management
   provider: ^6.1.2
 
-  # UI helpers
-  flutter_svg: ^2.0.10+1
+  # UI
   google_fonts: ^6.2.1
   percent_indicator: ^4.2.3
   fl_chart: ^0.67.0
