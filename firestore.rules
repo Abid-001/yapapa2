@@ -2,59 +2,39 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can only read/write their own user doc
-    // But group members can read each other's docs
     match /users/{userId} {
       allow read: if request.auth != null;
       allow write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // PINs are private - only owner can read/write
     match /pins/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    // Groups - authenticated users can read, members can write
-    match /groups/{groupId} {
+    // userLimits: each user stores their personal daily screentime limit
+    match /userLimits/{userId} {
       allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /groups/{groupId} {
+      allow read: if true;
       allow write: if request.auth != null;
 
-      // Expenses - authenticated group members
       match /expenses/{expenseId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read, write: if request.auth != null;
       }
-
-      // Screentime - authenticated group members
       match /screentime/{docId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read, write: if request.auth != null;
       }
-
-      // Chat messages - authenticated members
-      match /messages/{msgId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
-      }
-
-      // Preset messages
       match /presets/{presetId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
+        allow read, write: if request.auth != null;
       }
-
-      // Notifications (preset sends)
       match /notifications/{notifId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
-        allow delete: if request.auth != null;
+        allow read, write, delete: if request.auth != null;
       }
-
-      // Pokes
       match /pokes/{pokeId} {
-        allow read: if request.auth != null;
-        allow write: if request.auth != null;
-        allow delete: if request.auth != null;
+        allow read, write, delete: if request.auth != null;
       }
     }
   }

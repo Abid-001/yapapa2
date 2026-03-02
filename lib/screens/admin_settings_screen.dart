@@ -372,6 +372,133 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     );
   }
 
+  void _showDefaultLimitDialog(BuildContext context, AuthService auth, int currentMinutes) {
+    int hours = currentMinutes ~/ 60;
+    int minutes = currentMinutes % 60;
+    final ctrl = TextEditingController(text: (currentMinutes / 60).toStringAsFixed(1));
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Set Default Limit',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Enter hours (e.g. 3.0 = 3 hours, 1.5 = 90 min)',
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: AppTheme.textSecondary)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                  hintText: '3.0', suffixText: 'hours'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final val = double.tryParse(ctrl.text);
+              if (val != null && val > 0) {
+                await auth.updateDefaultScreentime((val * 60).round());
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Default limit updated!')),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNukeDialog(BuildContext context) {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('☢️ Nuke Server Data',
+            style: GoogleFonts.inter(
+                fontWeight: FontWeight.w700, color: AppTheme.error)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'This will DELETE ALL groups, users, expenses, screentime, chat messages and PINs from the server permanently. Cannot be undone.\n\nType NUKE to confirm:',
+              style: GoogleFonts.inter(
+                  fontSize: 13, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(hintText: 'Type NUKE'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.error),
+            onPressed: () async {
+              if (ctrl.text.trim() != 'NUKE') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Type NUKE exactly to confirm.')),
+                );
+                return;
+              }
+              Navigator.pop(context);
+              _nukeServer(context);
+            },
+            child: const Text('DELETE EVERYTHING',
+                style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _nukeServer(BuildContext context) async {
+    final db = FirebaseFirestore.instance;
+    try {
+      // Delete all top-level collections
+      for (final col in ['groups', 'users', 'pins', 'userLimits']) {
+        final docs = await db.collection(col).get();
+        for (final doc in docs.docs) {
+          // Delete subcollections for groups
+          if (col == 'groups') {
+            for (final sub in ['expenses', 'screentime', 'presets', 'pokes', 'notifications']) {
+              final subs = await doc.reference.collection(sub).get();
+              for (final s in subs.docs) {
+                await s.reference.delete();
+              }
+            }
+          }
+          await doc.reference.delete();
+        }
+      }
+      if (context.mounted) {
+        await context.read<AuthService>().logout();
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error during nuke: $e')),
+        );
+      }
+    }
+  }
+
   void _confirmLogout(BuildContext context) {
     showDialog(
       context: context,

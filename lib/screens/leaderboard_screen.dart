@@ -284,6 +284,9 @@ class _ScreentimeLeaderboardState
     _load();
   }
 
+  // Map uid -> whether they exceeded their daily limit today
+  Map<String, bool> _exceededLimit = {};
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -293,7 +296,7 @@ class _ScreentimeLeaderboardState
       final names = <String, String>{};
       for (final doc in userDocs) {
         if (doc.exists) {
-          final u = UserModel.fromMap(doc.data()!);
+          final u = UserModel.fromMap(doc.data() as Map<String, dynamic>);
           names[u.uid] = u.username;
         }
       }
@@ -303,6 +306,37 @@ class _ScreentimeLeaderboardState
         memberUids: widget.memberUids,
         month: DateTime.now(),
       );
+
+      // Check today's screentime vs each member's daily limit (stored in Firestore)
+      final today = DateTime.now();
+      final todayStr = '${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}';
+      final exceeded = <String, bool>{};
+      for (final uid in widget.memberUids) {
+        try {
+          final doc = await _db
+              .collection('groups')
+              .doc(widget.groupId)
+              .collection('screentime')
+              .where('uid', isEqualTo: uid)
+              .where('date', isEqualTo: todayStr)
+              .limit(1)
+              .get();
+          if (doc.docs.isNotEmpty) {
+            final data = doc.docs.first.data();
+            final todayMinutes = (data['totalMinutes'] as num?)?.toInt() ?? 0;
+            // Get their personal limit from Firestore (stored when they set it)
+            final limitDoc = await _db.collection('userLimits').doc(uid).get();
+            final limit = limitDoc.exists
+                ? ((limitDoc.data()?['limitMinutes'] as num?)?.toInt() ?? widget.groupDefaultMinutes)
+                : widget.groupDefaultMinutes;
+            exceeded[uid] = todayMinutes >= limit;
+          } else {
+            exceeded[uid] = false;
+          }
+        } catch (_) {
+          exceeded[uid] = false;
+        }
+      }
 
       final entries = totals.entries
           .map((e) => _RankEntry(
@@ -316,6 +350,7 @@ class _ScreentimeLeaderboardState
       if (mounted) {
         setState(() {
           _entries = entries;
+          _exceededLimit = exceeded;
           _loading = false;
         });
       }
@@ -368,8 +403,21 @@ class _ScreentimeLeaderboardState
                     isMe: isMe,
                     subtitle: 'This month',
                     showPoke: !isMe,
-                    onPoke: () => _showPokeSheet(
-                        context, item.uid, item.name),
+                    onPoke: () {
+                      final exceeded = _exceededLimit[item.uid] ?? false;
+                      if (exceeded) {
+                        _showPokeSheet(context, item.uid, item.name);
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '${item.name} hasn't exceeded their daily limit yet. No poke needed!',
+                            ),
+                            backgroundColor: AppTheme.surfaceElevated,
+                          ),
+                        );
+                      }
+                    },
                   ),
                 );
               }),

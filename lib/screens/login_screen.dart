@@ -261,6 +261,7 @@ class _CreateGroupForm extends StatefulWidget {
 
 class _CreateGroupFormState extends State<_CreateGroupForm> {
   final _usernameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   String _pin = '';
   String _confirmPin = '';
   String? _error;
@@ -268,6 +269,7 @@ class _CreateGroupFormState extends State<_CreateGroupForm> {
   @override
   void dispose() {
     _usernameCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
@@ -294,7 +296,7 @@ class _CreateGroupFormState extends State<_CreateGroupForm> {
 
     widget.onLoading(true);
     final auth = context.read<AuthService>();
-    final err = await auth.createGroup(username: username, pin: _pin);
+    final err = await auth.createGroup(username: username, pin: _pin, phoneNumber: _phoneCtrl.text.trim());
     if (mounted) {
       widget.onLoading(false);
       if (err != null) setState(() => _error = err);
@@ -316,6 +318,17 @@ class _CreateGroupFormState extends State<_CreateGroupForm> {
               prefixIcon: Icon(Icons.person_outline_rounded),
             ),
             textCapitalization: TextCapitalization.words,
+          ),
+          const SizedBox(height: 16),
+          _buildLabel('Phone Number (optional)'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _phoneCtrl,
+            decoration: const InputDecoration(
+              hintText: '+880 1XX XXX XXXX',
+              prefixIcon: Icon(Icons.phone_outlined),
+            ),
+            keyboardType: TextInputType.phone,
           ),
           const SizedBox(height: 16),
           _buildLabel('Set PIN'),
@@ -367,6 +380,7 @@ class _JoinGroupForm extends StatefulWidget {
 class _JoinGroupFormState extends State<_JoinGroupForm> {
   final _usernameCtrl = TextEditingController();
   final _codeCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
   String _pin = '';
   String _confirmPin = '';
   String? _error;
@@ -375,6 +389,7 @@ class _JoinGroupFormState extends State<_JoinGroupForm> {
   void dispose() {
     _usernameCtrl.dispose();
     _codeCtrl.dispose();
+    _phoneCtrl.dispose();
     super.dispose();
   }
 
@@ -406,6 +421,7 @@ class _JoinGroupFormState extends State<_JoinGroupForm> {
       username: username,
       pin: _pin,
       inviteCode: code,
+      phoneNumber: _phoneCtrl.text.trim(),
     );
     if (mounted) {
       widget.onLoading(false);
@@ -443,6 +459,17 @@ class _JoinGroupFormState extends State<_JoinGroupForm> {
               LengthLimitingTextInputFormatter(6),
               FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
             ],
+          ),
+          const SizedBox(height: 16),
+          _buildLabel('Phone Number (optional)'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _phoneCtrl,
+            decoration: const InputDecoration(
+              hintText: '+880 1XX XXX XXXX',
+              prefixIcon: Icon(Icons.phone_outlined),
+            ),
+            keyboardType: TextInputType.phone,
           ),
           const SizedBox(height: 16),
           _buildLabel('Set PIN'),

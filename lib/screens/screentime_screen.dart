@@ -40,7 +40,9 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
   }
 
   Future<void> _loadLimit() async {
-    final limit = await _service.getDailyLimit();
+    final auth = context.read<AuthService>();
+    final groupDefault = auth.currentGroup?.defaultScreentimeMinutes ?? 180;
+    final limit = await _service.getDailyLimit(groupDefault: groupDefault);
     if (mounted) setState(() => _dailyLimitMinutes = limit);
   }
 
@@ -103,7 +105,8 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
           if (_dailyLimitMinutes != null)
             TextButton(
               onPressed: () async {
-                await _service.saveDailyLimit(0);
+                final uid = context.read<AuthService>().currentUser?.uid;
+                await _service.saveDailyLimit(0, uid: uid);
                 if (mounted) {
                   setState(() => _dailyLimitMinutes = null);
                   Navigator.pop(context);
@@ -117,7 +120,8 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
               final hours = int.tryParse(ctrl.text.trim());
               if (hours == null || hours <= 0) return;
               final minutes = hours * 60;
-              await _service.saveDailyLimit(minutes);
+              final uid2 = context.read<AuthService>().currentUser?.uid;
+              await _service.saveDailyLimit(minutes, uid: uid2);
               if (mounted) {
                 setState(() => _dailyLimitMinutes = minutes);
                 Navigator.pop(context);

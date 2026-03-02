@@ -1,37 +1,31 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
-/// Simple connectivity checker using Firestore's network status.
-/// Notifies listeners when online/offline state changes.
 class ConnectivityService extends ChangeNotifier {
   bool _isOffline = false;
-  Timer? _timer;
+  StreamSubscription? _sub;
 
   bool get isOffline => _isOffline;
 
   ConnectivityService() {
-    _startChecking();
+    _init();
   }
 
-  void _startChecking() {
-    // Check every 15 seconds
-    _timer = Timer.periodic(const Duration(seconds: 15), (_) => _check());
-    _check(); // immediate check
+  Future<void> _init() async {
+    // Check immediately
+    final result = await Connectivity().checkConnectivity();
+    _setOffline(_isNoConnection(result));
+
+    // Listen for changes
+    _sub = Connectivity().onConnectivityChanged.listen((result) {
+      _setOffline(_isNoConnection(result));
+    });
   }
 
-  Future<void> _check() async {
-    try {
-      // A lightweight read to check connectivity
-      await FirebaseFirestore.instance
-          .collection('_ping')
-          .doc('ping')
-          .get(const GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 5));
-      _setOffline(false);
-    } catch (_) {
-      _setOffline(true);
-    }
+  bool _isNoConnection(List<ConnectivityResult> results) {
+    return results.isEmpty ||
+        results.every((r) => r == ConnectivityResult.none);
   }
 
   void _setOffline(bool value) {
@@ -43,7 +37,7 @@ class ConnectivityService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _timer?.cancel();
+    _sub?.cancel();
     super.dispose();
   }
 }

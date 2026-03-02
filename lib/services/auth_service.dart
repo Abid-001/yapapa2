@@ -60,6 +60,7 @@ class AuthService extends ChangeNotifier {
   Future<String?> createGroup({
     required String username,
     required String pin,
+    String phoneNumber = '',
   }) async {
     _errorMessage = null;
     try {
@@ -79,6 +80,7 @@ class AuthService extends ChangeNotifier {
         groupId: groupId,
         isAdmin: true,
         joinedAt: now,
+        phoneNumber: phoneNumber.trim(),
       );
 
       final group = GroupModel(
@@ -134,6 +136,7 @@ class AuthService extends ChangeNotifier {
     required String username,
     required String pin,
     required String inviteCode,
+    String phoneNumber = '',
   }) async {
     _errorMessage = null;
     try {
@@ -186,6 +189,7 @@ class AuthService extends ChangeNotifier {
         groupId: group.groupId,
         isAdmin: false,
         joinedAt: now,
+        phoneNumber: phoneNumber.trim(),
       );
 
       final pinHash = _hashPin(pin);
@@ -331,7 +335,18 @@ class AuthService extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<void> updateExpenseTypes(List<String> types) async {
+  Future<void> updateDefaultScreentime(int minutes) async {
+    if (_currentGroup == null) return;
+    try {
+      await _db.collection('groups').doc(_currentGroup!.groupId).update({
+        'defaultScreentimeMinutes': minutes,
+      });
+      _currentGroup = _currentGroup!.copyWith(defaultScreentimeMinutes: minutes);
+      notifyListeners();
+    } catch (_) {}
+  }
+
+    Future<void> updateExpenseTypes(List<String> types) async {
     if (_currentGroup == null) return;
     try {
       await _db.collection('groups').doc(_currentGroup!.groupId).update({

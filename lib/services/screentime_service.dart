@@ -7,6 +7,46 @@ import 'notification_service.dart';
 class ScreentimeService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  // ── Known package name → friendly name map ──────────────────────────────────
+  static const _knownApps = {
+    'com.whatsapp': 'WhatsApp',
+    'com.facebook.katana': 'Facebook',
+    'com.instagram.android': 'Instagram',
+    'com.twitter.android': 'Twitter / X',
+    'com.google.android.youtube': 'YouTube',
+    'com.google.android.gm': 'Gmail',
+    'com.google.android.apps.maps': 'Google Maps',
+    'com.google.android.googlequicksearchbox': 'Google Search',
+    'com.google.android.apps.photos': 'Google Photos',
+    'com.google.android.apps.messaging': 'Messages',
+    'com.google.android.dialer': 'Phone',
+    'com.android.chrome': 'Chrome',
+    'org.telegram.messenger': 'Telegram',
+    'com.snapchat.android': 'Snapchat',
+    'com.tiktok': 'TikTok',
+    'com.zhiliaoapp.musically': 'TikTok',
+    'com.spotify.music': 'Spotify',
+    'com.netflix.mediaclient': 'Netflix',
+    'com.google.android.apps.youtube.music': 'YouTube Music',
+    'com.google.android.apps.tachyon': 'Google Meet',
+    'com.microsoft.teams': 'Microsoft Teams',
+    'com.discord': 'Discord',
+    'com.linkedin.android': 'LinkedIn',
+    'com.amazon.mShop.android.shopping': 'Amazon',
+    'com.android.settings': 'Settings',
+    'com.android.launcher': 'Launcher',
+    'com.samsung.android.app.notes': 'Samsung Notes',
+    'com.samsung.android.messaging': 'Messages',
+    'com.samsung.android.contacts': 'Contacts',
+    'com.google.android.contacts': 'Contacts',
+    'com.google.android.calendar': 'Google Calendar',
+    'com.google.android.keep': 'Google Keep',
+    'com.microsoft.office.word': 'Microsoft Word',
+    'com.microsoft.office.excel': 'Microsoft Excel',
+    'com.bykvik.yapapa': 'Yapapa',
+    'com.yapapa.app': 'Yapapa',
+  };
+
   // ── Fetch raw usage from Android UsageStats ────────────────────────────────
   Future<Map<String, int>> getRawAppUsage(DateTime start, DateTime end) async {
     try {
@@ -14,9 +54,28 @@ class ScreentimeService {
       final Map<String, int> result = {};
       for (final info in usage) {
         final minutes = info.usage.inMinutes;
-        if (minutes > 0) {
-          result[info.appName] = minutes;
+        if (minutes < 1) continue;
+        // Try known map first
+        String name = _knownApps[info.packageName] ?? '';
+        // If not known, use appName from the package (may already be clean)
+        if (name.isEmpty) {
+          name = info.appName;
         }
+        // If still looks like a package name (contains dots, lowercase), clean it up
+        if (name.contains('.') && name == name.toLowerCase()) {
+          // Extract last segment and capitalize
+          final parts = name.split('.');
+          name = parts.last
+              .replaceAll('_', ' ')
+              .split(' ')
+              .map((w) => w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1))
+              .join(' ');
+        }
+        // Skip system junk
+        if (name.isEmpty || name.toLowerCase() == 'android' ||
+            name.toLowerCase().contains('launcher')) continue;
+        // Merge duplicates (same friendly name)
+        result[name] = (result[name] ?? 0) + minutes;
       }
       return result;
     } catch (_) {
@@ -125,15 +184,24 @@ class ScreentimeService {
   }
 
   // ── Save/get daily limit preference ───────────────────────────────────────
-  Future<void> saveDailyLimit(int minutes) async {
+  Future<void> saveDailyLimit(int minutes, {String? uid}) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('daily_limit_minutes', minutes);
+    // Also write to Firestore so friends can check for poke
+    if (uid != null) {
+      try {
+        await _db.collection('userLimits').doc(uid).set({
+          'limitMinutes': minutes,
+          'uid': uid,
+        });
+      } catch (_) {}
+    }
   }
 
-  Future<int?> getDailyLimit() async {
+  Future<int> getDailyLimit({int groupDefault = 180}) async {
     final prefs = await SharedPreferences.getInstance();
     final val = prefs.getInt('daily_limit_minutes');
-    return val;
+    return val ?? groupDefault;
   }
 
   // ── Cleanup old screentime data (2 months) ─────────────────────────────────

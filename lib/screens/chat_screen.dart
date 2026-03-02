@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/chat_message.dart';
 import '../widgets/common_widgets.dart';
+import 'member_profile_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -243,6 +245,21 @@ class _MessageBubble extends StatelessWidget {
 
   const _MessageBubble({required this.message, required this.isMe});
 
+  void _openProfile(BuildContext context) {
+    // Look up member by senderUid from Firestore users collection
+    final db = FirebaseFirestore.instance;
+    db.collection('users').doc(message.senderUid).get().then((doc) {
+      if (doc.exists && context.mounted) {
+        final user = UserModel.fromMap(doc.data() as Map<String, dynamic>);
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+              builder: (_) => MemberProfileScreen(member: user)),
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final timeStr =
@@ -259,24 +276,27 @@ class _MessageBubble extends StatelessWidget {
             isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          // Avatar (only for others)
+          // Avatar (only for others) — tap to open profile
           if (!isMe) ...[
-            Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Center(
-                child: Text(
-                  message.senderName.isNotEmpty
-                      ? message.senderName[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.primary,
+            GestureDetector(
+              onTap: () => _openProfile(context),
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Center(
+                  child: Text(
+                    message.senderName.isNotEmpty
+                        ? message.senderName[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.primary,
+                    ),
                   ),
                 ),
               ),
