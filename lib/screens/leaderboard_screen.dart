@@ -84,6 +84,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
                 groupId: group.groupId,
                 memberUids: group.memberUids,
                 currentUid: auth.currentUser?.uid ?? '',
+                groupDefaultMinutes: group.defaultScreentimeMinutes,
               ),
             ],
           ),
@@ -258,11 +259,13 @@ class _ScreentimeLeaderboard extends StatefulWidget {
   final String groupId;
   final List<String> memberUids;
   final String currentUid;
+  final int groupDefaultMinutes;
 
   const _ScreentimeLeaderboard({
     required this.groupId,
     required this.memberUids,
     required this.currentUid,
+    this.groupDefaultMinutes = 180,
   });
 
   @override
@@ -411,7 +414,7 @@ class _ScreentimeLeaderboardState
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              '${item.name} hasn't exceeded their daily limit yet. No poke needed!',
+                              "${item.name} hasn't exceeded their daily limit yet. No poke needed!",
                             ),
                             backgroundColor: AppTheme.surfaceElevated,
                           ),

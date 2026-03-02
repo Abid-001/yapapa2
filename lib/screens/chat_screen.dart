@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/chat_message.dart';
+import '../models/user_model.dart';
 import '../widgets/common_widgets.dart';
 import 'member_profile_screen.dart';
 
