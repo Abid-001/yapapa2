@@ -281,35 +281,6 @@ class AuthService extends ChangeNotifier {
       _errorMessage = 'Login failed. Please try again.';
       notifyListeners();
       return _errorMessage;
-
-      final user = UserModel.fromMap(userQuery.docs.first.data() as Map<String, dynamic>);
-
-      // Verify PIN
-      final pinDoc = await _db.collection('pins').doc(user.uid).get();
-      final pinData = pinDoc.data() as Map<String, dynamic>?;
-      if (!pinDoc.exists || pinData == null || pinData['pin'] != _hashPin(pin)) {
-        _errorMessage = 'Incorrect PIN.';
-        notifyListeners();
-        return _errorMessage;
-      }
-
-      // Re-authenticate anonymously
-      await _auth.signInAnonymously();
-
-      _currentUser = user;
-      _currentGroup = group;
-      await _saveSession(user.uid, group.groupId);
-      _listenerService.startListening(
-        uid: user.uid,
-        groupId: group.groupId,
-        username: user.username,
-      );
-      notifyListeners();
-      return null;
-    } catch (e) {
-      _errorMessage = 'Login failed. Please try again.';
-      notifyListeners();
-      return _errorMessage;
     }
   }
 
