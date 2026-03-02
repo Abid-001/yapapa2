@@ -314,14 +314,14 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       setState(() => _error = 'Please enter a valid amount.');
       return;
     }
-    if (_categoryCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Please enter a category name.');
-      return;
-    }
     if (_selectedType == null) {
       setState(() => _error = 'Please select a category type.');
       return;
     }
+    // Category name is optional — fall back to type name if empty
+    final categoryName = _categoryCtrl.text.trim().isEmpty
+        ? _selectedType!
+        : _categoryCtrl.text.trim();
 
     setState(() => _isLoading = true);
 
@@ -330,7 +330,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
       uid: user.uid,
       groupId: group.groupId,
       amount: amount,
-      categoryName: _categoryCtrl.text.trim(),
+      categoryName: categoryName,
       categoryType: _selectedType!,
       note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
       date: _date,
@@ -413,31 +413,57 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               ),
               const SizedBox(height: 20),
 
-              // Amount
-              _Label('Amount (৳)'),
+              // Date
+              _Label('Date'),
               const SizedBox(height: 8),
-              TextField(
-                controller: _amountCtrl,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(
-                      RegExp(r'^\d+\.?\d{0,2}')),
-                ],
-                decoration: const InputDecoration(
-                  hintText: '0.00',
-                  prefixIcon: Icon(Icons.currency_exchange_rounded),
+              GestureDetector(
+                onTap: _pickDate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceElevated,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.divider),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 18, color: AppTheme.textSecondary),
+                      const SizedBox(width: 10),
+                      Text(
+                        '${_date.day}/${_date.month}/${_date.year}',
+                        style: GoogleFonts.inter(
+                          fontSize: 14,
+                          color: AppTheme.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
 
+              // Note
+              _Label('Note (optional)'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _noteCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'Any notes...',
+                  prefixIcon: Icon(Icons.notes_rounded),
+                ),
+                maxLines: 2,
+              ),
+              const SizedBox(height: 14),
+
               // Category name
-              _Label('Category Name'),
+              _Label('Category Name (optional)'),
               const SizedBox(height: 8),
               TextField(
                 controller: _categoryCtrl,
                 decoration: const InputDecoration(
-                  hintText: 'e.g. Lunch at Dhanmondi',
+                  hintText: 'e.g. Lunch at Dhanmondi (or leave blank)',
                   prefixIcon: Icon(Icons.label_outline_rounded),
                 ),
                 textCapitalization: TextCapitalization.sentences,
@@ -493,47 +519,21 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 ),
               const SizedBox(height: 14),
 
-              // Date
-              _Label('Date'),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: _pickDate,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceElevated,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.divider),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today_outlined,
-                          size: 18, color: AppTheme.textSecondary),
-                      const SizedBox(width: 10),
-                      Text(
-                        '${_date.day}/${_date.month}/${_date.year}',
-                        style: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // Note
-              _Label('Note (optional)'),
+              // Amount
+              _Label('Amount (৳)'),
               const SizedBox(height: 8),
               TextField(
-                controller: _noteCtrl,
+                controller: _amountCtrl,
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(
+                      RegExp(r'^\d+\.?\d{0,2}')),
+                ],
                 decoration: const InputDecoration(
-                  hintText: 'Any notes...',
-                  prefixIcon: Icon(Icons.notes_rounded),
+                  hintText: '0.00',
+                  prefixIcon: Icon(Icons.currency_exchange_rounded),
                 ),
-                maxLines: 2,
               ),
 
               if (_error != null) ...[

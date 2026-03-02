@@ -24,7 +24,7 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -64,7 +64,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
               unselectedLabelStyle: GoogleFonts.inter(fontSize: 13),
               tabs: const [
                 Tab(text: '💰 Expenses'),
-                Tab(text: '📱 Screentime'),
+                Tab(text: '📱 Monthly'),
+                Tab(text: '📅 Daily'),
               ],
             ),
           ),
@@ -81,6 +82,12 @@ class _LeaderboardScreenState extends State<LeaderboardScreen>
                 currentUid: auth.currentUser?.uid ?? '',
               ),
               _ScreentimeLeaderboard(
+                groupId: group.groupId,
+                memberUids: group.memberUids,
+                currentUid: auth.currentUser?.uid ?? '',
+                groupDefaultMinutes: group.defaultScreentimeMinutes,
+              ),
+              _DailyScreentimeLeaderboard(
                 groupId: group.groupId,
                 memberUids: group.memberUids,
                 currentUid: auth.currentUser?.uid ?? '',
@@ -273,13 +280,14 @@ class _ScreentimeLeaderboard extends StatefulWidget {
       _ScreentimeLeaderboardState();
 }
 
-class _ScreentimeLeaderboardState
-    extends State<_ScreentimeLeaderboard> {
+class _ScreentimeLeaderboardState extends State<_ScreentimeLeaderboard> {
   final ScreentimeService _service = ScreentimeService();
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   bool _loading = true;
   List<_RankEntry> _entries = [];
+  // 0 = this month, 1 = last month, 2 = two months ago
+  int _selectedMonth = 0;
 
   @override
   void initState() {
@@ -287,8 +295,18 @@ class _ScreentimeLeaderboardState
     _load();
   }
 
-  // Map uid -> whether they exceeded their daily limit today
-  Map<String, bool> _exceededLimit = {};
+  DateTime get _targetMonth {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month - _selectedMonth, 1);
+  }
+
+  String get _monthLabel {
+    if (_selectedMonth == 0) return 'This Month';
+    if (_selectedMonth == 1) return 'Last Month';
+    final m = _targetMonth;
+    const months = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${months[m.month]} ${m.year}';
+  }
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -307,39 +325,8 @@ class _ScreentimeLeaderboardState
       final totals = await _service.getAllMembersMonthlyScreentime(
         groupId: widget.groupId,
         memberUids: widget.memberUids,
-        month: DateTime.now(),
+        month: _targetMonth,
       );
-
-      // Check today's screentime vs each member's daily limit (stored in Firestore)
-      final today = DateTime.now();
-      final todayStr = '${today.year}-${today.month.toString().padLeft(2,'0')}-${today.day.toString().padLeft(2,'0')}';
-      final exceeded = <String, bool>{};
-      for (final uid in widget.memberUids) {
-        try {
-          final doc = await _db
-              .collection('groups')
-              .doc(widget.groupId)
-              .collection('screentime')
-              .where('uid', isEqualTo: uid)
-              .where('date', isEqualTo: todayStr)
-              .limit(1)
-              .get();
-          if (doc.docs.isNotEmpty) {
-            final data = doc.docs.first.data();
-            final todayMinutes = (data['totalMinutes'] as num?)?.toInt() ?? 0;
-            // Get their personal limit from Firestore (stored when they set it)
-            final limitDoc = await _db.collection('userLimits').doc(uid).get();
-            final limit = limitDoc.exists
-                ? ((limitDoc.data()?['limitMinutes'] as num?)?.toInt() ?? widget.groupDefaultMinutes)
-                : widget.groupDefaultMinutes;
-            exceeded[uid] = todayMinutes >= limit;
-          } else {
-            exceeded[uid] = false;
-          }
-        } catch (_) {
-          exceeded[uid] = false;
-        }
-      }
 
       final entries = totals.entries
           .map((e) => _RankEntry(
@@ -353,7 +340,6 @@ class _ScreentimeLeaderboardState
       if (mounted) {
         setState(() {
           _entries = entries;
-          _exceededLimit = exceeded;
           _loading = false;
         });
       }
@@ -374,7 +360,41 @@ class _ScreentimeLeaderboardState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _MonthLabel(),
+            const SizedBox(height: 8),
+            // Month selector
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [0, 1, 2].map((i) {
+                final selected = _selectedMonth == i;
+                final labels = ['This Month', 'Last Month', '2 Months Ago'];
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: GestureDetector(
+                    onTap: () {
+                      if (_selectedMonth != i) {
+                        setState(() => _selectedMonth = i);
+                        _load();
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected ? AppTheme.primary : AppTheme.surfaceElevated,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        labels[i],
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: selected ? Colors.white : AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
             const SizedBox(height: 16),
 
             if (_loading)
@@ -404,23 +424,8 @@ class _ScreentimeLeaderboardState
                     name: item.name,
                     value: ScreentimeService.formatMinutes(minutes),
                     isMe: isMe,
-                    subtitle: 'This month',
-                    showPoke: !isMe,
-                    onPoke: () {
-                      final exceeded = _exceededLimit[item.uid] ?? false;
-                      if (exceeded) {
-                        _showPokeSheet(context, item.uid, item.name);
-                      } else {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              "${item.name} hasn't exceeded their daily limit yet. No poke needed!",
-                            ),
-                            backgroundColor: AppTheme.surfaceElevated,
-                          ),
-                        );
-                      }
-                    },
+                    subtitle: _monthLabel,
+                    showPoke: false, // No poke on monthly — only on daily tab
                   ),
                 );
               }),
@@ -429,8 +434,7 @@ class _ScreentimeLeaderboardState
             Center(
               child: Text(
                 '🥇 = Lowest screentime wins',
-                style: GoogleFonts.inter(
-                    fontSize: 12, color: AppTheme.textHint),
+                style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textHint),
               ),
             ),
           ],
@@ -438,9 +442,105 @@ class _ScreentimeLeaderboardState
       ),
     );
   }
+}
 
-  void _showPokeSheet(
-      BuildContext context, String uid, String name) {
+// ─── Daily Screentime Leaderboard (with Poke) ─────────────────────────────────
+class _DailyScreentimeLeaderboard extends StatefulWidget {
+  final String groupId;
+  final List<String> memberUids;
+  final String currentUid;
+  final int groupDefaultMinutes;
+
+  const _DailyScreentimeLeaderboard({
+    required this.groupId,
+    required this.memberUids,
+    required this.currentUid,
+    this.groupDefaultMinutes = 180,
+  });
+
+  @override
+  State<_DailyScreentimeLeaderboard> createState() =>
+      _DailyScreentimeLeaderboardState();
+}
+
+class _DailyScreentimeLeaderboardState extends State<_DailyScreentimeLeaderboard> {
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  bool _loading = true;
+
+  // uid -> {minutes, limitMinutes, exceeded}
+  List<_DailyEntry> _entries = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final today = DateTime.now();
+      final todayStr =
+          '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+
+      // Load member names
+      final userDocs = await Future.wait(
+        widget.memberUids.map((uid) => _db.collection('users').doc(uid).get()),
+      );
+      final names = <String, String>{};
+      for (final doc in userDocs) {
+        if (doc.exists) {
+          final u = UserModel.fromMap(doc.data() as Map<String, dynamic>);
+          names[u.uid] = u.username;
+        }
+      }
+
+      final entries = <_DailyEntry>[];
+      for (final uid in widget.memberUids) {
+        // Get today's total
+        int todayMinutes = 0;
+        try {
+          final snap = await _db
+              .collection('groups')
+              .doc(widget.groupId)
+              .collection('screentime')
+              .where('uid', isEqualTo: uid)
+              .where('date', isGreaterThanOrEqualTo: DateTime(today.year, today.month, today.day).toIso8601String())
+              .where('date', isLessThan: DateTime(today.year, today.month, today.day + 1).toIso8601String())
+              .limit(1)
+              .get();
+          if (snap.docs.isNotEmpty) {
+            todayMinutes = (snap.docs.first.data()['totalMinutes'] as num?)?.toInt() ?? 0;
+          }
+        } catch (_) {}
+
+        // Get their personal limit
+        int limitMinutes = widget.groupDefaultMinutes;
+        try {
+          final limitDoc = await _db.collection('userLimits').doc(uid).get();
+          if (limitDoc.exists) {
+            limitMinutes = (limitDoc.data()?['limitMinutes'] as num?)?.toInt() ?? widget.groupDefaultMinutes;
+          }
+        } catch (_) {}
+
+        entries.add(_DailyEntry(
+          uid: uid,
+          name: names[uid] ?? 'Unknown',
+          todayMinutes: todayMinutes,
+          limitMinutes: limitMinutes,
+          exceeded: limitMinutes > 0 && todayMinutes >= limitMinutes,
+        ));
+      }
+
+      entries.sort((a, b) => a.todayMinutes.compareTo(b.todayMinutes));
+
+      if (mounted) setState(() { _entries = entries; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showPokeSheet(BuildContext context, String uid, String name) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -451,6 +551,82 @@ class _ScreentimeLeaderboardState
       ),
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return RefreshIndicator(
+      color: AppTheme.primary,
+      backgroundColor: AppTheme.surfaceElevated,
+      onRefresh: _load,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_loading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2),
+                ),
+              )
+            else if (_entries.isEmpty)
+              const EmptyState(
+                icon: Icons.today_rounded,
+                title: 'No data for today',
+                subtitle: 'Data appears after syncing screentime.',
+              )
+            else
+              ..._entries.asMap().entries.map((entry) {
+                final rank = entry.key + 1;
+                final item = entry.value;
+                final isMe = item.uid == widget.currentUid;
+                final limitStr = ScreentimeService.formatMinutes(item.limitMinutes);
+                final usedStr = ScreentimeService.formatMinutes(item.todayMinutes);
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _LeaderboardTile(
+                    rank: rank,
+                    name: item.name,
+                    value: usedStr,
+                    isMe: isMe,
+                    subtitle: 'Limit: $limitStr',
+                    showPoke: !isMe && item.exceeded,
+                    onPoke: () => _showPokeSheet(context, item.uid, item.name),
+                    exceeded: item.exceeded,
+                  ),
+                );
+              }),
+
+            const SizedBox(height: 8),
+            Center(
+              child: Text(
+                '🥇 = Lowest daily screentime wins  •  👆 = Poke when over limit',
+                style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textHint),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DailyEntry {
+  final String uid;
+  final String name;
+  final int todayMinutes;
+  final int limitMinutes;
+  final bool exceeded;
+  _DailyEntry({
+    required this.uid,
+    required this.name,
+    required this.todayMinutes,
+    required this.limitMinutes,
+    required this.exceeded,
+  });
 }
 
 // ─── Shared widgets ───────────────────────────────────────────────────────────
@@ -462,6 +638,7 @@ class _LeaderboardTile extends StatelessWidget {
   final String subtitle;
   final bool showPoke;
   final VoidCallback? onPoke;
+  final bool exceeded;
 
   const _LeaderboardTile({
     required this.rank,
@@ -471,6 +648,7 @@ class _LeaderboardTile extends StatelessWidget {
     required this.subtitle,
     required this.showPoke,
     this.onPoke,
+    this.exceeded = false,
   });
 
   @override

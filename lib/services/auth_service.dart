@@ -227,38 +227,60 @@ class AuthService extends ChangeNotifier {
   Future<String?> loginWithPin({
     required String username,
     required String pin,
-    required String inviteCode,
+    String inviteCode = '',
   }) async {
     _errorMessage = null;
     try {
-      // Find group
-      final query = await _db
-          .collection('groups')
-          .where('inviteCode', isEqualTo: inviteCode.trim().toUpperCase())
-          .limit(1)
-          .get();
-
-      if (query.docs.isEmpty) {
-        _errorMessage = 'Invalid invite code.';
-        notifyListeners();
-        return _errorMessage;
-      }
-
-      final group = GroupModel.fromMap(query.docs.first.data() as Map<String, dynamic>);
-
-      // Find user in group
+      // Find user by username only (no invite code needed for login)
       final userQuery = await _db
           .collection('users')
-          .where('groupId', isEqualTo: group.groupId)
           .where('username', isEqualTo: username.trim())
           .limit(1)
           .get();
 
       if (userQuery.docs.isEmpty) {
-        _errorMessage = 'Username not found in this group.';
+        _errorMessage = 'Username not found. Please check and try again.';
         notifyListeners();
         return _errorMessage;
       }
+
+      final user = UserModel.fromMap(userQuery.docs.first.data() as Map<String, dynamic>);
+
+      // Load their group
+      final groupDoc = await _db.collection('groups').doc(user.groupId).get();
+      if (!groupDoc.exists) {
+        _errorMessage = 'Group not found.';
+        notifyListeners();
+        return _errorMessage;
+      }
+      final group = GroupModel.fromMap(groupDoc.data() as Map<String, dynamic>);
+
+      // Verify PIN
+      final pinDoc = await _db.collection('pins').doc(user.uid).get();
+      final pinData = pinDoc.data() as Map<String, dynamic>?;
+      if (!pinDoc.exists || pinData == null || pinData['pin'] != _hashPin(pin)) {
+        _errorMessage = 'Incorrect PIN.';
+        notifyListeners();
+        return _errorMessage;
+      }
+
+      // Re-authenticate anonymously
+      await _auth.signInAnonymously();
+
+      _currentUser = user;
+      _currentGroup = group;
+      await _saveSession(user.uid, group.groupId);
+      _listenerService.startListening(
+        uid: user.uid,
+        groupId: group.groupId,
+        username: user.username,
+      );
+      notifyListeners();
+      return null;
+    } catch (e) {
+      _errorMessage = 'Login failed. Please try again.';
+      notifyListeners();
+      return _errorMessage;
 
       final user = UserModel.fromMap(userQuery.docs.first.data() as Map<String, dynamic>);
 

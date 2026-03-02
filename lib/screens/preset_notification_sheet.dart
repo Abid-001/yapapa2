@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/preset_message.dart';
@@ -51,13 +52,12 @@ class _PresetNotificationSheetState
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
 
-      // Also post to chat as system message
-      await _db
-          .collection('groups')
-          .doc(groupId)
-          .collection('messages')
-          .add({
-        'id': '',
+      // Post to Realtime Database chat so it appears in the group chat
+      final msgRef = FirebaseDatabase.instance
+          .ref('chats/$groupId/messages')
+          .push();
+      await msgRef.set({
+        'id': msgRef.key ?? '',
         'groupId': groupId,
         'senderUid': 'system',
         'senderName': senderName,

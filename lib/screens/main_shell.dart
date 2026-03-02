@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
@@ -12,6 +13,8 @@ import 'chat_screen.dart';
 import 'preset_notification_sheet.dart';
 import 'admin_settings_screen.dart';
 import '../widgets/common_widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -22,13 +25,14 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
+  int _notifCount = 0;
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    BudgetScreen(),
-    ScreentimeScreen(),
-    LeaderboardScreen(),
-    ChatScreen(),
+  List<Widget> get _screens => [
+    HomeScreen(onGoToChat: () => setState(() => _currentIndex = 4)),
+    const BudgetScreen(),
+    const ScreentimeScreen(),
+    const LeaderboardScreen(),
+    const ChatScreen(),
   ];
 
   final List<String> _titles = [
@@ -47,6 +51,45 @@ class _MainShellState extends State<MainShell> {
     Icons.chat_bubble_outline_rounded,
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadNotifCount();
+  }
+
+  Future<void> _loadNotifCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('inbox_notifications') ?? [];
+    if (mounted) setState(() => _notifCount = saved.length);
+  }
+
+  void _showNotificationsInbox() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('inbox_notifications') ?? [];
+    final notifs = saved
+        .map((s) => Map<String, dynamic>.from(jsonDecode(s) as Map))
+        .toList()
+        .reversed
+        .toList();
+
+    if (!mounted) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (_) => _NotificationsInbox(
+        notifications: notifs,
+        onClear: () async {
+          await prefs.remove('inbox_notifications');
+          if (mounted) setState(() => _notifCount = 0);
+        },
+      ),
+    );
+    // Mark as read
+    await prefs.setStringList('inbox_notifications_read', saved);
+    if (mounted) setState(() => _notifCount = 0);
+  }
+
   void _showPresetSheet() {
     showModalBottomSheet(
       context: context,
@@ -60,7 +103,19 @@ class _MainShellState extends State<MainShell> {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        if (_currentIndex != 0) {
+          // Not on home → go to home
+          setState(() => _currentIndex = 0);
+        } else {
+          // Already on home → exit app
+          await SystemNavigator.pop();
+        }
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         title: Text(
@@ -72,23 +127,49 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         actions: [
-          // Bell icon for preset notifications
+          // Bell icon — shows received preset notifications inbox
           IconButton(
-            onPressed: _showPresetSheet,
-            icon: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceElevated,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.notifications_outlined,
-                size: 20,
-                color: AppTheme.textPrimary,
-              ),
+            onPressed: _showNotificationsInbox,
+            icon: Stack(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceElevated,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.notifications_outlined,
+                    size: 20,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                if (_notifCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.error,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(
+                          _notifCount > 9 ? '9+' : '$_notifCount',
+                          style: const TextStyle(
+                              fontSize: 8,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            tooltip: 'Send Notification',
+            tooltip: 'Notifications',
           ),
           // Settings icon
           IconButton(
@@ -199,5 +280,129 @@ class _OfflineDetector extends StatelessWidget {
   Widget build(BuildContext context) {
     final isOffline = context.watch<ConnectivityService>().isOffline;
     return OfflineBanner(isOffline: isOffline);
+  }
+}
+
+// ── Notifications Inbox ────────────────────────────────────────────────────────
+class _NotificationsInbox extends StatelessWidget {
+  final List<Map<String, dynamic>> notifications;
+  final VoidCallback onClear;
+
+  const _NotificationsInbox(
+      {required this.notifications, required this.onClear});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppTheme.divider,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Notifications',
+                  style: GoogleFonts.inter(
+                      fontSize: 17, fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary)),
+              if (notifications.isNotEmpty)
+                TextButton(
+                  onPressed: () {
+                    onClear();
+                    Navigator.pop(context);
+                  },
+                  child: Text('Clear all',
+                      style: GoogleFonts.inter(
+                          fontSize: 13, color: AppTheme.error)),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (notifications.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 32),
+              child: Column(
+                children: [
+                  const Icon(Icons.notifications_none_rounded,
+                      size: 48, color: AppTheme.textHint),
+                  const SizedBox(height: 12),
+                  Text('No notifications yet',
+                      style: GoogleFonts.inter(
+                          fontSize: 14, color: AppTheme.textHint)),
+                ],
+              ),
+            )
+          else
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.5),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: notifications.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(color: AppTheme.divider, height: 1),
+                itemBuilder: (context, i) {
+                  final n = notifications[i];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary.withOpacity(0.15),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.notifications_rounded,
+                                size: 18, color: AppTheme.primary),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                n['senderName'] ?? 'Someone',
+                                style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.textPrimary),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                n['text'] ?? '',
+                                style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    color: AppTheme.textSecondary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }

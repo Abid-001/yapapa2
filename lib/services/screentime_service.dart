@@ -242,11 +242,24 @@ class ScreentimeService {
 
   static DateTime get weekStart {
     final now = DateTime.now();
-    return now.subtract(Duration(days: now.weekday - 1));
+    // Week runs Sat→Fri. Saturday = weekday 6
+    int daysSinceSat = (now.weekday + 1) % 7; // 0 on Sat, 1 on Sun, ..., 6 on Fri
+    final sat = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: daysSinceSat));
+    return sat;
+  }
+
+  static DateTime get weekEnd {
+    return weekStart.add(const Duration(days: 7));
   }
 
   static DateTime get monthStart {
     final now = DateTime.now();
     return DateTime(now.year, now.month, 1);
+  }
+
+  static DateTime get monthEnd {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month + 1, 1);
   }
 }

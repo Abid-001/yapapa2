@@ -156,21 +156,18 @@ class _LoginForm extends StatefulWidget {
 
 class _LoginFormState extends State<_LoginForm> {
   final _usernameCtrl = TextEditingController();
-  final _codeCtrl = TextEditingController();
   String _pin = '';
   String? _error;
 
   @override
   void dispose() {
     _usernameCtrl.dispose();
-    _codeCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     setState(() => _error = null);
     final username = _usernameCtrl.text.trim();
-    final code = _codeCtrl.text.trim().toUpperCase();
 
     if (username.isEmpty) {
       setState(() => _error = 'Please enter your username.');
@@ -180,17 +177,13 @@ class _LoginFormState extends State<_LoginForm> {
       setState(() => _error = 'Please enter your 4-digit PIN.');
       return;
     }
-    if (code.length != 6) {
-      setState(() => _error = 'Please enter the 6-character group code.');
-      return;
-    }
 
     widget.onLoading(true);
     final auth = context.read<AuthService>();
     final err = await auth.loginWithPin(
       username: username,
       pin: _pin,
-      inviteCode: code,
+      inviteCode: '',
     );
     if (mounted) {
       widget.onLoading(false);
@@ -212,21 +205,6 @@ class _LoginFormState extends State<_LoginForm> {
             prefixIcon: Icon(Icons.person_outline_rounded),
           ),
           textCapitalization: TextCapitalization.words,
-        ),
-        const SizedBox(height: 16),
-        _buildLabel('Group Invite Code'),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _codeCtrl,
-          decoration: const InputDecoration(
-            hintText: 'e.g. AB3XY7',
-            prefixIcon: Icon(Icons.group_outlined),
-          ),
-          textCapitalization: TextCapitalization.characters,
-          inputFormatters: [
-            LengthLimitingTextInputFormatter(6),
-            FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
-          ],
         ),
         const SizedBox(height: 20),
         _buildLabel('PIN'),
@@ -293,6 +271,10 @@ class _CreateGroupFormState extends State<_CreateGroupForm> {
       setState(() => _error = 'PINs do not match.');
       return;
     }
+    if (_phoneCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please enter your phone number.');
+      return;
+    }
 
     widget.onLoading(true);
     final auth = context.read<AuthService>();
@@ -320,7 +302,7 @@ class _CreateGroupFormState extends State<_CreateGroupForm> {
             textCapitalization: TextCapitalization.words,
           ),
           const SizedBox(height: 16),
-          _buildLabel('Phone Number (optional)'),
+          _buildLabel('Phone Number'),
           const SizedBox(height: 8),
           TextField(
             controller: _phoneCtrl,
@@ -414,6 +396,10 @@ class _JoinGroupFormState extends State<_JoinGroupForm> {
       setState(() => _error = 'PINs do not match.');
       return;
     }
+    if (_phoneCtrl.text.trim().isEmpty) {
+      setState(() => _error = 'Please enter your phone number.');
+      return;
+    }
 
     widget.onLoading(true);
     final auth = context.read<AuthService>();
@@ -461,7 +447,7 @@ class _JoinGroupFormState extends State<_JoinGroupForm> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildLabel('Phone Number (optional)'),
+          _buildLabel('Phone Number'),
           const SizedBox(height: 8),
           TextField(
             controller: _phoneCtrl,

@@ -65,71 +65,88 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
   void _showSetLimitDialog() {
     final ctrl = TextEditingController(
       text: _dailyLimitMinutes != null
-          ? (_dailyLimitMinutes! ~/ 60).toString()
+          ? (_dailyLimitMinutes! / 60).toStringAsFixed(1)
           : '',
     );
+    String? dialogError;
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(
-          'Set Daily Limit',
-          style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'When you exceed this limit, all your friends will be notified automatically.',
-              style: GoogleFonts.inter(
-                  fontSize: 13, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: ctrl,
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                hintText: 'Hours per day',
-                prefixIcon: Icon(Icons.timer_outlined),
-                suffixText: 'hours',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(
+            'Set Daily Limit',
+            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'When you exceed this limit, your friends will be notified automatically.',
+                style: GoogleFonts.inter(
+                    fontSize: 13, color: AppTheme.textSecondary),
               ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: ctrl,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  hintText: 'e.g. 3.0 or 12.5',
+                  prefixIcon: Icon(Icons.timer_outlined),
+                  suffixText: 'hours',
+                ),
+              ),
+              if (dialogError != null) ...[
+                const SizedBox(height: 8),
+                Text(dialogError!,
+                    style: const TextStyle(color: AppTheme.error, fontSize: 12)),
+              ],
+              const SizedBox(height: 6),
+              Text('Enter a value between 0.5 and 24 hours.',
+                  style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textHint)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            if (_dailyLimitMinutes != null)
+              TextButton(
+                onPressed: () async {
+                  final uid = context.read<AuthService>().currentUser?.uid;
+                  await _service.saveDailyLimit(0, uid: uid);
+                  if (mounted) {
+                    setState(() => _dailyLimitMinutes = null);
+                    Navigator.pop(ctx);
+                  }
+                },
+                child: const Text('Remove Limit',
+                    style: TextStyle(color: AppTheme.error)),
+              ),
+            ElevatedButton(
+              onPressed: () async {
+                final hours = double.tryParse(ctrl.text.trim());
+                if (hours == null || hours <= 0) {
+                  setDialogState(() => dialogError = 'Please enter a valid number.');
+                  return;
+                }
+                if (hours > 24) {
+                  setDialogState(() => dialogError = 'Limit cannot exceed 24 hours.');
+                  return;
+                }
+                final minutes = (hours * 60).round();
+                final uid2 = context.read<AuthService>().currentUser?.uid;
+                await _service.saveDailyLimit(minutes, uid: uid2);
+                if (mounted) {
+                  setState(() => _dailyLimitMinutes = minutes);
+                  Navigator.pop(ctx);
+                }
+              },
+              child: const Text('Save'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          if (_dailyLimitMinutes != null)
-            TextButton(
-              onPressed: () async {
-                final uid = context.read<AuthService>().currentUser?.uid;
-                await _service.saveDailyLimit(0, uid: uid);
-                if (mounted) {
-                  setState(() => _dailyLimitMinutes = null);
-                  Navigator.pop(context);
-                }
-              },
-              child: const Text('Remove Limit',
-                  style: TextStyle(color: AppTheme.error)),
-            ),
-          ElevatedButton(
-            onPressed: () async {
-              final hours = int.tryParse(ctrl.text.trim());
-              if (hours == null || hours <= 0) return;
-              final minutes = hours * 60;
-              final uid2 = context.read<AuthService>().currentUser?.uid;
-              await _service.saveDailyLimit(minutes, uid: uid2);
-              if (mounted) {
-                setState(() => _dailyLimitMinutes = minutes);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -172,7 +189,7 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
                       ),
                       Text(
                         _dailyLimitMinutes != null
-                            ? '${_dailyLimitMinutes! ~/ 60}h per day'
+                            ? '${ScreentimeService.formatMinutes(_dailyLimitMinutes!)} per day'
                             : 'Not set',
                         style: GoogleFonts.inter(
                           fontSize: 14,
@@ -480,7 +497,7 @@ class _WeeklyTabState extends State<_WeeklyTab> {
 
   Future<void> _load() async {
     final weekStart = ScreentimeService.weekStart;
-    final weekEnd = weekStart.add(const Duration(days: 7));
+    final weekEnd = ScreentimeService.weekEnd;
     final data = await _service.getMyScreentime(
       groupId: widget.groupId,
       uid: widget.uid,
@@ -585,7 +602,7 @@ class _MonthlyTabState extends State<_MonthlyTab> {
 
   Future<void> _load() async {
     final monthStart = ScreentimeService.monthStart;
-    final monthEnd = DateTime(monthStart.year, monthStart.month + 1, 1);
+    final monthEnd = ScreentimeService.monthEnd;
     final data = await _service.getMyScreentime(
       groupId: widget.groupId,
       uid: widget.uid,
@@ -932,11 +949,7 @@ class _DaySummaryTile extends StatelessWidget {
               ),
             ),
           ),
-          Text(
-            '${model.appUsage.length} apps',
-            style: GoogleFonts.inter(
-                fontSize: 12, color: AppTheme.textHint),
-          ),
+
         ],
       ),
     );

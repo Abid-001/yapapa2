@@ -16,13 +16,15 @@ class MemberProfileScreen extends StatelessWidget {
       );
       return;
     }
+    // Use android.intent.action.DIAL — opens dialer with number pre-filled
+    // without requiring CALL_PHONE permission to be granted at runtime
     final uri = Uri(scheme: 'tel', path: number);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open the phone app.')),
+          SnackBar(content: Text('Could not open phone app: $e')),
         );
       }
     }

@@ -69,7 +69,15 @@ class NotificationService {
   static Future<void> showPresetMessage(
       String senderName, String message) async {
     await _showLocalNotification(
-      title: '🔔 $senderName',
+      title: '🔔 \$senderName',
+      body: message,
+    );
+  }
+
+  static Future<void> showChatMessage(
+      String senderName, String message) async {
+    await _showLocalNotification(
+      title: '💬 \$senderName',
       body: message,
     );
   }

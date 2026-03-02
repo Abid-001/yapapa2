@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_database/firebase_database.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/budget_service.dart';
@@ -10,7 +11,8 @@ import '../widgets/common_widgets.dart';
 import 'preset_notification_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onGoToChat;
+  const HomeScreen({super.key, this.onGoToChat});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -120,9 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
             SectionHeader(
               title: 'Recent Chat',
               trailing: 'Open Chat →',
-              onTrailingTap: () {
-                // Navigate to chat via bottom nav — handled by parent shell
-              },
+              onTrailingTap: () => widget.onGoToChat?.call(),
             ),
             const SizedBox(height: 12),
             _RecentChatPreview(groupId: group.groupId),
@@ -437,16 +437,24 @@ class _RecentChatPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('groups')
-          .doc(groupId)
-          .collection('messages')
-          .orderBy('timestamp', descending: true)
-          .limit(3)
-          .snapshots(),
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('chats/$groupId/messages')
+          .orderByChild('timestamp')
+          .limitToLast(3)
+          .onValue,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+        List<Map<String, dynamic>> msgs = [];
+        if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
+          final raw = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+          msgs = raw.values
+              .map((v) => Map<String, dynamic>.from(v as Map))
+              .toList()
+            ..sort((a, b) => (b['timestamp'] as int? ?? 0)
+                .compareTo(a['timestamp'] as int? ?? 0));
+        }
+
+        if (msgs.isEmpty) {
           return GradientCard(
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
@@ -468,12 +476,11 @@ class _RecentChatPreview extends StatelessWidget {
           );
         }
 
-        final msgs = snapshot.data!.docs;
         return GradientCard(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Column(
             children: List.generate(msgs.length, (i) {
-              final data = msgs[i].data() as Map<String, dynamic>;
+              final data = msgs[i];
               final name = data['senderName'] ?? '';
               final text = data['text'] ?? '';
               final isPreset = data['isPreset'] ?? false;

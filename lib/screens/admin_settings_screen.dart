@@ -220,6 +220,48 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                 },
               ),
               const SizedBox(height: 24),
+
+              // ── Default Screentime Limit ────────────────────────────────
+              _SectionTitle('Default Daily Screentime Limit'),
+              const SizedBox(height: 4),
+              Text(
+                'Applied to members who have not set their own limit.',
+                style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 10),
+              GradientCard(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.timer_outlined, color: AppTheme.primary, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          group.defaultScreentimeMinutes > 0
+                              ? '${(group.defaultScreentimeMinutes / 60).toStringAsFixed(1)} hours / day'
+                              : 'Not set',
+                          style: GoogleFonts.inter(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.textPrimary),
+                        ),
+                      ),
+                      OutlinedButton(
+                        onPressed: () => _showDefaultLimitDialog(context, auth, group.defaultScreentimeMinutes),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: GoogleFonts.inter(fontSize: 12),
+                        ),
+                        child: const Text('Change'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
             ],
 
             // ── Members list ──────────────────────────────────────────────
