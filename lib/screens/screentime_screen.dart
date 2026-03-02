@@ -63,109 +63,109 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
   }
 
   void _showSetLimitDialog() {
-    final ctrl = TextEditingController(
-      text: _dailyLimitMinutes != null
-          ? (_dailyLimitMinutes! / 60).toStringAsFixed(1)
-          : '',
-    );
-    final focusNode = FocusNode();
+    final existingH = _dailyLimitMinutes != null ? _dailyLimitMinutes! ~/ 60 : 0;
+    final existingM = _dailyLimitMinutes != null ? _dailyLimitMinutes! % 60 : 0;
+    final hCtrl = TextEditingController(text: existingH > 0 ? existingH.toString() : '');
+    final mCtrl = TextEditingController(text: existingM > 0 ? existingM.toString() : '');
+    final hFocus = FocusNode();
     String? dialogError;
-    // Auto-open keyboard after dialog opens
-    WidgetsBinding.instance.addPostFrameCallback((_) => focusNode.requestFocus());
+    WidgetsBinding.instance.addPostFrameCallback((_) => hFocus.requestFocus());
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
-          // Request focus after build
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!focusNode.hasFocus) focusNode.requestFocus();
-          });
           return AlertDialog(
-          title: Text(
-            'Set Daily Limit',
-            style: GoogleFonts.inter(fontWeight: FontWeight.w700),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'When you exceed this limit, your friends will be notified automatically.',
-                style: GoogleFonts.inter(
-                    fontSize: 13, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: ctrl,
-                focusNode: focusNode,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                // Treat comma as decimal point
-                inputFormatters: [
-                  TextInputFormatter.withFunction((oldValue, newValue) {
-                    final text = newValue.text.replaceAll(',', '.');
-                    return newValue.copyWith(text: text, selection: TextSelection.collapsed(offset: text.length));
-                  }),
-                ],
-                decoration: const InputDecoration(
-                  hintText: 'e.g. 3.0 or 12.5',
-                  prefixIcon: Icon(Icons.timer_outlined),
-                  suffixText: 'hours',
+            title: Text('Set Daily Limit', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'When you exceed this limit, your friends will be notified automatically.',
+                  style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary),
                 ),
-              ),
-              if (dialogError != null) ...[
-                const SizedBox(height: 8),
-                Text(dialogError!,
-                    style: const TextStyle(color: AppTheme.error, fontSize: 12)),
+                const SizedBox(height: 16),
+                Row(children: [
+                  // Hours box
+                  Expanded(
+                    child: TextField(
+                      controller: hCtrl,
+                      focusNode: hFocus,
+                      autofocus: true,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        hintText: '0',
+                        suffixText: 'h',
+                        prefixIcon: Icon(Icons.timer_outlined),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Mins box
+                  Expanded(
+                    child: TextField(
+                      controller: mCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        // Max 59 minutes
+                        TextInputFormatter.withFunction((old, newVal) {
+                          final v = int.tryParse(newVal.text) ?? 0;
+                          if (v > 59) return old;
+                          return newVal;
+                        }),
+                      ],
+                      textAlign: TextAlign.center,
+                      decoration: const InputDecoration(
+                        hintText: '0',
+                        suffixText: 'min',
+                      ),
+                    ),
+                  ),
+                ]),
+                if (dialogError != null) ...[
+                  const SizedBox(height: 8),
+                  Text(dialogError!, style: const TextStyle(color: AppTheme.error, fontSize: 12)),
+                ],
+                const SizedBox(height: 6),
+                Text('Max 24h. Minutes 0–59.', style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textHint)),
               ],
-              const SizedBox(height: 6),
-              Text('Enter a value between 0.5 and 24 hours.',
-                  style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textHint)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
             ),
-            if (_dailyLimitMinutes != null)
-              TextButton(
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              if (_dailyLimitMinutes != null)
+                TextButton(
+                  onPressed: () async {
+                    final uid = context.read<AuthService>().currentUser?.uid;
+                    await _service.saveDailyLimit(0, uid: uid);
+                    if (mounted) { setState(() => _dailyLimitMinutes = null); Navigator.pop(ctx); }
+                  },
+                  child: const Text('Remove', style: TextStyle(color: AppTheme.error)),
+                ),
+              ElevatedButton(
                 onPressed: () async {
-                  final uid = context.read<AuthService>().currentUser?.uid;
-                  await _service.saveDailyLimit(0, uid: uid);
-                  if (mounted) {
-                    setState(() => _dailyLimitMinutes = null);
-                    Navigator.pop(ctx);
+                  final h = int.tryParse(hCtrl.text.trim()) ?? 0;
+                  final m = int.tryParse(mCtrl.text.trim()) ?? 0;
+                  final totalMinutes = h * 60 + m;
+                  if (totalMinutes <= 0) {
+                    setDialogState(() => dialogError = 'Please enter a limit greater than 0.');
+                    return;
                   }
+                  if (totalMinutes > 24 * 60) {
+                    setDialogState(() => dialogError = 'Limit cannot exceed 24 hours.');
+                    return;
+                  }
+                  final uid = context.read<AuthService>().currentUser?.uid;
+                  await _service.saveDailyLimit(totalMinutes, uid: uid);
+                  if (mounted) { setState(() => _dailyLimitMinutes = totalMinutes); Navigator.pop(ctx); }
                 },
-                child: const Text('Remove Limit',
-                    style: TextStyle(color: AppTheme.error)),
+                child: const Text('Save'),
               ),
-            ElevatedButton(
-              onPressed: () async {
-                final text = ctrl.text.trim().replaceAll(',', '.');
-                final hours = double.tryParse(text);
-                if (hours == null || hours <= 0) {
-                  setDialogState(() => dialogError = 'Please enter a valid number.');
-                  return;
-                }
-                if (hours > 24) {
-                  setDialogState(() => dialogError = 'Limit cannot exceed 24 hours.');
-                  return;
-                }
-                final minutes = (hours * 60).round();
-                final uid2 = context.read<AuthService>().currentUser?.uid;
-                await _service.saveDailyLimit(minutes, uid: uid2);
-                if (mounted) {
-                  setState(() => _dailyLimitMinutes = minutes);
-                  Navigator.pop(ctx);
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );  // AlertDialog
-        }  // StatefulBuilder builder
+            ],
+          );
+        },
       ),
     );
   }

@@ -85,13 +85,12 @@ class _HomeScreenState extends State<HomeScreen> {
           _QuickPresetButton(),
           const SizedBox(height: 20),
 
-          SectionHeader(
-            title: 'Recent Notifications',
-            trailing: 'Open Chat →',
-            onTrailingTap: () => widget.onGoToChat?.call(),
-          ),
+          SectionHeader(title: 'Recent Notifications'),
           const SizedBox(height: 12),
-          _RecentNotificationsPreview(groupId: group.groupId),
+          GestureDetector(
+            onTap: () => widget.onGoToChat?.call(),
+            child: _RecentNotificationsPreview(groupId: group.groupId),
+          ),
         ]),
       ),
     );

@@ -267,7 +267,7 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
               const SizedBox(height: 16),
               Text(_isEdit ? 'Edit Expense' : 'Add Expense', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
               const SizedBox(height: 20),
-              // Amount first + auto-focus
+              // 1. Amount
               _Label('Amount (৳)'),
               const SizedBox(height: 8),
               TextField(
@@ -277,6 +277,32 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                 decoration: const InputDecoration(hintText: '0', prefixIcon: Icon(Icons.currency_exchange_rounded)),
               ),
               const SizedBox(height: 14),
+              // 2. Date
+              _Label('Date'),
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _pickDate,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.divider)),
+                  child: Row(children: [
+                    const Icon(Icons.calendar_today_outlined, size: 18, color: AppTheme.textSecondary),
+                    const SizedBox(width: 10),
+                    Text('${_date.day}/${_date.month}/${_date.year}', style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textPrimary)),
+                  ]),
+                ),
+              ),
+              const SizedBox(height: 14),
+              // 3. Name (optional)
+              _Label('Name (optional)'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _categoryCtrl,
+                decoration: const InputDecoration(hintText: 'e.g. Lunch at Dhanmondi', prefixIcon: Icon(Icons.label_outline_rounded)),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+              const SizedBox(height: 14),
+              // 4. Category Type
               _Label('Category Type'),
               const SizedBox(height: 8),
               if (types.isEmpty)
@@ -298,33 +324,6 @@ class _AddExpenseSheetState extends State<_AddExpenseSheet> {
                     ),
                   );
                 }).toList()),
-              const SizedBox(height: 14),
-              _Label('Date'),
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: _pickDate,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                  decoration: BoxDecoration(color: AppTheme.surfaceElevated, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.divider)),
-                  child: Row(children: [
-                    const Icon(Icons.calendar_today_outlined, size: 18, color: AppTheme.textSecondary),
-                    const SizedBox(width: 10),
-                    Text('${_date.day}/${_date.month}/${_date.year}', style: GoogleFonts.inter(fontSize: 14, color: AppTheme.textPrimary)),
-                  ]),
-                ),
-              ),
-              const SizedBox(height: 14),
-              _Label('Category Name (optional)'),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _categoryCtrl,
-                decoration: const InputDecoration(hintText: 'e.g. Lunch at Dhanmondi (or leave blank)', prefixIcon: Icon(Icons.label_outline_rounded)),
-                textCapitalization: TextCapitalization.sentences,
-              ),
-              const SizedBox(height: 14),
-              _Label('Note (optional)'),
-              const SizedBox(height: 8),
-              TextField(controller: _noteCtrl, decoration: const InputDecoration(hintText: 'Any notes...', prefixIcon: Icon(Icons.notes_rounded)), maxLines: 2),
               if (_error != null) ...[const SizedBox(height: 14), _ErrorBox(_error!)],
               const SizedBox(height: 24),
               SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _submit, child: Text(_isEdit ? 'Update Expense' : 'Save Expense'))),

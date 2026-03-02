@@ -144,6 +144,80 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() => _sending = false);
   }
 
+
+  Future<void> _editMessage(ChatMessage msg, String newText) async {
+    if (newText.trim().isEmpty) return;
+    try {
+      await _dbRef.child('chats/$_groupId/messages/${msg.id}').update({
+        'text': newText.trim(),
+        'editedText': newText.trim(),
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _deleteMessage(ChatMessage msg) async {
+    try {
+      await _dbRef.child('chats/$_groupId/messages/${msg.id}').update({
+        'isDeleted': true,
+        'text': 'This message was removed.',
+      });
+    } catch (_) {}
+  }
+
+  void _showMessageOptions(BuildContext context, ChatMessage msg) {
+    final canDelete = DateTime.now().difference(msg.timestamp).inMinutes < 60;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Center(child: Container(width: 36, height: 4, decoration: BoxDecoration(color: AppTheme.divider, borderRadius: BorderRadius.circular(2)))),
+          const SizedBox(height: 16),
+          ListTile(
+            leading: const Icon(Icons.edit_outlined, color: AppTheme.primary),
+            title: Text('Edit message', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500)),
+            onTap: () {
+              Navigator.pop(context);
+              _showEditDialog(context, msg);
+            },
+          ),
+          if (canDelete) ListTile(
+            leading: const Icon(Icons.delete_outline_rounded, color: AppTheme.error),
+            title: Text('Remove for everyone', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w500, color: AppTheme.error)),
+            onTap: () {
+              Navigator.pop(context);
+              _deleteMessage(msg);
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, ChatMessage msg) {
+    final ctrl = TextEditingController(text: msg.text);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Edit message', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: TextField(controller: ctrl, autofocus: true, maxLines: null,
+          decoration: const InputDecoration(hintText: 'Edit your message...')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () { _editMessage(msg, ctrl.text); Navigator.pop(ctx); },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _scrollToBottom() {
     if (_scrollCtrl.hasClients) {
       _scrollCtrl.animateTo(
@@ -227,6 +301,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               message: msg,
                               isMe: isMe,
                               showTime: showTime,
+                              onLongPress: isMe && !msg.isDeleted
+                                ? () => _showMessageOptions(context, msg)
+                                : null,
                             ),
                           ],
                         );
@@ -258,8 +335,9 @@ class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMe;
   final bool showTime;
+  final VoidCallback? onLongPress;
 
-  const _MessageBubble({required this.message, required this.isMe, this.showTime = true});
+  const _MessageBubble({required this.message, required this.isMe, this.showTime = true, this.onLongPress});
 
   void _openProfile(BuildContext context) {
     // Look up member by senderUid from Firestore users collection
@@ -330,39 +408,60 @@ class _MessageBubble extends StatelessWidget {
                 if (!isMe)
                   Padding(
                     padding: const EdgeInsets.only(left: 4, bottom: 2),
-                    child: Text(
-                      message.senderName,
-                      style: GoogleFonts.inter(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.primary,
+                    child: GestureDetector(
+                      onTap: () => _openProfile(context),
+                      child: Text(
+                        message.senderName,
+                        style: GoogleFonts.inter(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.primary,
+                        ),
                       ),
                     ),
                   ),
-                Container(
-                  constraints: BoxConstraints(
-                    maxWidth: MediaQuery.of(context).size.width * 0.68,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isMe
-                        ? AppTheme.primary
-                        : AppTheme.surfaceElevated,
-                    borderRadius: BorderRadius.only(
-                      topLeft: const Radius.circular(16),
-                      topRight: const Radius.circular(16),
-                      bottomLeft: Radius.circular(isMe ? 16 : 4),
-                      bottomRight: Radius.circular(isMe ? 4 : 16),
+                GestureDetector(
+                  onLongPress: onLongPress,
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.68,
                     ),
-                  ),
-                  child: Text(
-                    message.text,
-                    style: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: isMe
-                          ? Colors.white
-                          : AppTheme.textPrimary,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: message.isDeleted
+                          ? AppTheme.surfaceHighlight
+                          : isMe ? AppTheme.primary : AppTheme.surfaceElevated,
+                      borderRadius: BorderRadius.only(
+                        topLeft: const Radius.circular(16),
+                        topRight: const Radius.circular(16),
+                        bottomLeft: Radius.circular(isMe ? 16 : 4),
+                        bottomRight: Radius.circular(isMe ? 4 : 16),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          message.isDeleted ? 'This message was removed.' : message.text,
+                          style: GoogleFonts.inter(
+                            fontSize: 14,
+                            color: message.isDeleted
+                                ? AppTheme.textHint
+                                : isMe ? Colors.white : AppTheme.textPrimary,
+                            fontStyle: message.isDeleted ? FontStyle.italic : FontStyle.normal,
+                          ),
+                        ),
+                        if (!message.isDeleted && message.editedText != null)
+                          Text(
+                            '(edited)',
+                            style: GoogleFonts.inter(
+                              fontSize: 10,
+                              color: isMe ? Colors.white60 : AppTheme.textHint,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
                 ),
