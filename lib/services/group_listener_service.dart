@@ -32,7 +32,6 @@ class GroupListenerService {
   // ── Poke Listener ────────────────────────────────────────────────────────────
   void _listenForPokes({required String uid, required String groupId}) {
     final cutoff = DateTime.now().millisecondsSinceEpoch - 10000;
-
     _pokeSub?.cancel();
     _pokeSub = _db
         .collection('groups')
@@ -46,13 +45,25 @@ class GroupListenerService {
         if (change.type == DocumentChangeType.added) {
           final data = change.doc.data() as Map<String, dynamic>?;
           if (data == null) continue;
-
           final pokeKey = 'poke_seen_${change.doc.id}';
           final prefs = await SharedPreferences.getInstance();
           if (!(prefs.getBool(pokeKey) ?? false)) {
-            final from = data['fromName'] as String? ?? 'Your friend';
-            await NotificationService.showScreentimePoke(from);
+            // fromName field must be set by the poke sender
+            final fromName = data['fromName'] as String?
+                ?? data['senderName'] as String?
+                ?? 'Someone';
+            await NotificationService.showScreentimePoke(fromName);
             await prefs.setBool(pokeKey, true);
+            // Save poke to inbox too
+            final inbox = prefs.getStringList('inbox_notifications') ?? [];
+            inbox.add(jsonEncode({
+              'senderName': fromName,
+              'text': '👆 poked you! Put the phone down!',
+              'timestamp': DateTime.now().millisecondsSinceEpoch,
+              'isPoke': true,
+            }));
+            if (inbox.length > 50) inbox.removeAt(0);
+            await prefs.setStringList('inbox_notifications', inbox);
             try { await change.doc.reference.delete(); } catch (_) {}
           }
         }
@@ -67,7 +78,6 @@ class GroupListenerService {
     required String currentUsername,
   }) {
     final cutoff = DateTime.now().millisecondsSinceEpoch - 10000;
-
     _notifSub?.cancel();
     _notifSub = _db
         .collection('groups')
@@ -84,27 +94,27 @@ class GroupListenerService {
         final notifKey = 'notif_seen_${change.doc.id}';
         final prefs = await SharedPreferences.getInstance();
         if (prefs.getBool(notifKey) ?? false) continue;
+        await prefs.setBool(notifKey, true);
 
+        final senderUid = data['senderUid'] as String? ?? '';
         final senderName = data['senderName'] as String? ?? 'Someone';
         final text = data['text'] as String? ?? '';
 
-        if (senderName != currentUsername) {
-          // Show push notification
-          await NotificationService.showPresetMessage(senderName, text);
+        // Fix (3): skip if sender is current user — no self-notification
+        if (senderUid == currentUid || senderName == currentUsername) continue;
 
-          // Save to inbox
-          final inbox = prefs.getStringList('inbox_notifications') ?? [];
-          inbox.add(jsonEncode({
-            'senderName': senderName,
-            'text': text,
-            'timestamp': DateTime.now().millisecondsSinceEpoch,
-          }));
-          // Keep max 50
-          if (inbox.length > 50) inbox.removeAt(0);
-          await prefs.setStringList('inbox_notifications', inbox);
-        }
+        await NotificationService.showPresetMessage(senderName, text);
 
-        await prefs.setBool(notifKey, true);
+        // Save to inbox
+        final inbox = prefs.getStringList('inbox_notifications') ?? [];
+        inbox.add(jsonEncode({
+          'senderName': senderName,
+          'text': text,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }));
+        if (inbox.length > 50) inbox.removeAt(0);
+        await prefs.setStringList('inbox_notifications', inbox);
+
         try {
           final ts = data['timestamp'] as int? ?? 0;
           if (DateTime.now().millisecondsSinceEpoch - ts > 60000) {
@@ -121,10 +131,7 @@ class GroupListenerService {
     required String currentUid,
   }) {
     _chatSub?.cancel();
-
-    // Only listen to messages from the last 10 seconds (avoid notifying old msgs on login)
     final cutoff = DateTime.now().millisecondsSinceEpoch - 10000;
-
     _chatSub = FirebaseDatabase.instance
         .ref('chats/$groupId/messages')
         .orderByChild('timestamp')
@@ -136,23 +143,23 @@ class GroupListenerService {
       final data = Map<String, dynamic>.from(raw as Map);
 
       final senderUid = data['senderUid'] as String? ?? '';
-      if (senderUid == currentUid) return; // Don't notify for own messages
+      // Fix (3): don't notify sender for their own messages
+      if (senderUid == currentUid || senderUid == 'system') return;
 
       final senderName = data['senderName'] as String? ?? 'Someone';
       final text = data['text'] as String? ?? '';
       final isPreset = data['isPreset'] as bool? ?? false;
 
-      // Deduplicate
+      // Fix (3): for preset messages, the notification was already sent via
+      // the notifications collection listener — skip duplicate here
+      if (isPreset) return;
+
       final msgKey = 'chat_notif_${event.snapshot.key}';
       final prefs = await SharedPreferences.getInstance();
       if (prefs.getBool(msgKey) ?? false) return;
       await prefs.setBool(msgKey, true);
 
-      if (isPreset) {
-        await NotificationService.showPresetMessage(senderName, text);
-      } else {
-        await NotificationService.showChatMessage(senderName, text);
-      }
+      await NotificationService.showChatMessage(senderName, text);
     });
   }
 

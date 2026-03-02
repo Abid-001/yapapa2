@@ -78,6 +78,8 @@ class _ChatScreenState extends State<ChatScreen> {
           })
           .whereType<ChatMessage>()
           .where((m) => !m.isExpired)
+          // Only show normal chat messages OR admin-fixed preset notifications
+          .where((m) => !m.isPreset || (m.isPreset && (m.isFixed)))
           .toList()
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
@@ -210,6 +212,13 @@ class _ChatScreenState extends State<ChatScreen> {
                               _messages[i - 1].timestamp,
                               msg.timestamp,
                             );
+                        // Show time only on the LAST consecutive message
+                        // from the same sender at the same minute
+                        final isLast = i == _messages.length - 1;
+                        final nextMsg = isLast ? null : _messages[i + 1];
+                        final showTime = isLast ||
+                            nextMsg!.senderUid != msg.senderUid ||
+                            !_isSameMinute(msg.timestamp, nextMsg.timestamp);
                         return Column(
                           children: [
                             if (showDateDivider)
@@ -217,6 +226,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             _MessageBubble(
                               message: msg,
                               isMe: isMe,
+                              showTime: showTime,
                             ),
                           ],
                         );
@@ -237,14 +247,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
   bool _isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
+
+  bool _isSameMinute(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day &&
+      a.hour == b.hour && a.minute == b.minute;
 }
 
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 class _MessageBubble extends StatelessWidget {
   final ChatMessage message;
   final bool isMe;
+  final bool showTime;
 
-  const _MessageBubble({required this.message, required this.isMe});
+  const _MessageBubble({required this.message, required this.isMe, this.showTime = true});
 
   void _openProfile(BuildContext context) {
     // Look up member by senderUid from Firestore users collection
@@ -351,17 +366,19 @@ class _MessageBubble extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: Text(
-                    timeStr,
-                    style: GoogleFonts.inter(
-                      fontSize: 10,
-                      color: AppTheme.textHint,
+                if (showTime) ...[
+                  const SizedBox(height: 2),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Text(
+                      timeStr,
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: AppTheme.textHint,
+                      ),
                     ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
@@ -381,6 +398,7 @@ class _PresetMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final timeStr = DateFormat('HH:mm').format(message.timestamp);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Center(
@@ -388,45 +406,25 @@ class _PresetMessageBubble extends StatelessWidget {
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.82,
           ),
-          padding: const EdgeInsets.symmetric(
-              horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
             color: AppTheme.accent.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: AppTheme.accent.withOpacity(0.25),
-            ),
+            border: Border.all(color: AppTheme.accent.withOpacity(0.25)),
           ),
-          child: Column(
-            children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.notifications_active_rounded,
-                      size: 13, color: AppTheme.accent),
-                  const SizedBox(width: 5),
-                  Text(
-                    '${message.senderName} sent a notification',
-                    style: GoogleFonts.inter(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.accent,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                message.text,
-                textAlign: TextAlign.center,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppTheme.textPrimary,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ),
+          child: Column(children: [
+            Row(mainAxisSize: MainAxisSize.min, children: [
+              const Icon(Icons.notifications_active_rounded, size: 13, color: AppTheme.accent),
+              const SizedBox(width: 5),
+              Text('${message.senderName} sent a notification',
+                  style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.accent)),
+            ]),
+            const SizedBox(height: 5),
+            Text(message.text, textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary, fontStyle: FontStyle.italic)),
+            const SizedBox(height: 4),
+            Text(timeStr, style: GoogleFonts.inter(fontSize: 10, color: AppTheme.textHint)),
+          ]),
         ),
       ),
     );

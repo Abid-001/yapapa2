@@ -68,11 +68,19 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
           ? (_dailyLimitMinutes! / 60).toStringAsFixed(1)
           : '',
     );
+    final focusNode = FocusNode();
     String? dialogError;
+    // Auto-open keyboard after dialog opens
+    WidgetsBinding.instance.addPostFrameCallback((_) => focusNode.requestFocus());
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
+        builder: (ctx, setDialogState) {
+          // Request focus after build
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!focusNode.hasFocus) focusNode.requestFocus();
+          });
+          return AlertDialog(
           title: Text(
             'Set Daily Limit',
             style: GoogleFonts.inter(fontWeight: FontWeight.w700),
@@ -89,7 +97,16 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
               const SizedBox(height: 16),
               TextField(
                 controller: ctrl,
+                focusNode: focusNode,
+                autofocus: true,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                // Treat comma as decimal point
+                inputFormatters: [
+                  TextInputFormatter.withFunction((oldValue, newValue) {
+                    final text = newValue.text.replaceAll(',', '.');
+                    return newValue.copyWith(text: text, selection: TextSelection.collapsed(offset: text.length));
+                  }),
+                ],
                 decoration: const InputDecoration(
                   hintText: 'e.g. 3.0 or 12.5',
                   prefixIcon: Icon(Icons.timer_outlined),
@@ -126,7 +143,8 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
               ),
             ElevatedButton(
               onPressed: () async {
-                final hours = double.tryParse(ctrl.text.trim());
+                final text = ctrl.text.trim().replaceAll(',', '.');
+                final hours = double.tryParse(text);
                 if (hours == null || hours <= 0) {
                   setDialogState(() => dialogError = 'Please enter a valid number.');
                   return;
@@ -146,7 +164,8 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
               child: const Text('Save'),
             ),
           ],
-        ),
+        );  // AlertDialog
+        }  // StatefulBuilder builder
       ),
     );
   }
@@ -305,21 +324,23 @@ class _DailyTabState extends State<_DailyTab> {
     _load();
   }
 
-  Future<void> _load() async {
-    final todayStart = ScreentimeService.todayStart;
+  void _load() {
+    // Today = midnight (00:00:00) to next midnight — matches Android battery/screentime
+    final todayStart = ScreentimeService.todayStart; // midnight
     final tomorrow = todayStart.add(const Duration(days: 1));
-    final data = await _service.getMyScreentime(
+    _service.streamMyScreentime(
       groupId: widget.groupId,
       uid: widget.uid,
       from: todayStart,
       to: tomorrow,
-    );
-    if (mounted) {
-      setState(() {
-        _today = data.isNotEmpty ? data.first : null;
-        _loading = false;
-      });
-    }
+    ).listen((data) {
+      if (mounted) {
+        setState(() {
+          _today = data.isNotEmpty ? data.first : null;
+          _loading = false;
+        });
+      }
+    });
   }
 
   @override
@@ -695,10 +716,13 @@ class _PokeSheetState extends State<PokeSheet> {
   bool _loading = false;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
-  Future<void> _sendPoke() async {
+  Future<void> _sendPoke(BuildContext context) async {
     setState(() => _loading = true);
     try {
-      // Write a poke record that the target's app can pick up
+      // Need current user's name to show in notification
+      final auth = context.read<AuthService>();
+      final fromName = auth.currentUser?.username ?? 'Someone';
+      final fromUid = auth.currentUser?.uid ?? '';
       await _db
           .collection('groups')
           .doc(widget.groupId)
@@ -706,6 +730,8 @@ class _PokeSheetState extends State<PokeSheet> {
           .add({
         'targetUid': widget.targetUid,
         'targetName': widget.targetName,
+        'fromName': fromName,
+        'fromUid': fromUid,
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
       if (mounted) setState(() {
@@ -796,7 +822,7 @@ class _PokeSheetState extends State<PokeSheet> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _sendPoke,
+                      onPressed: () => _sendPoke(context),
                       style: ElevatedButton.styleFrom(
                           backgroundColor: AppTheme.accentOrange),
                       child: const Text('Poke! 👆'),

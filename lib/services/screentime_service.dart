@@ -83,6 +83,71 @@ class ScreentimeService {
     }
   }
 
+  // ── Backfill historical screentime on login ───────────────────────────────
+  // Reads from Android UsageStats for past days that are missing in Firestore.
+  // Android keeps UsageStats for ~30 days, so we can recover data from logged-out period.
+  Future<void> backfillHistoricalScreentime({
+    required String uid,
+    required String groupId,
+    int? dailyLimitMinutes,
+    int daysBack = 30,
+  }) async {
+    try {
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      // Get existing record IDs from Firestore for this user (last daysBack days)
+      final cutoff = today.subtract(Duration(days: daysBack));
+      final existingSnap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('screentime')
+          .where('uid', isEqualTo: uid)
+          .where('date', isGreaterThanOrEqualTo: cutoff.toIso8601String())
+          .get();
+      final existingDates = existingSnap.docs
+          .map((d) => (d.data()['date'] as String).substring(0, 10))
+          .toSet();
+
+      // For each missing day, fetch from Android UsageStats and upload
+      for (int i = 1; i <= daysBack; i++) {
+        final day = today.subtract(Duration(days: i));
+        final dateStr = day.toIso8601String().substring(0, 10);
+
+        // Skip if we already have this day
+        if (existingDates.contains(dateStr)) continue;
+
+        final dayEnd = day.add(const Duration(days: 1));
+        final appUsage = await getRawAppUsage(day, dayEnd);
+        if (appUsage.isEmpty) continue;
+
+        final totalMinutes = appUsage.values.fold(0, (a, b) => a + b);
+        if (totalMinutes < 1) continue;
+
+        final id = '${uid}_$dateStr';
+        final model = ScreentimeModel(
+          id: id,
+          uid: uid,
+          groupId: groupId,
+          date: day,
+          totalMinutes: totalMinutes,
+          appUsage: appUsage,
+          dailyLimitMinutes: dailyLimitMinutes,
+        );
+
+        await _db
+            .collection('groups')
+            .doc(groupId)
+            .collection('screentime')
+            .doc(id)
+            .set(model.toMap());
+
+        // Small delay to avoid hammering Firestore
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    } catch (_) {}
+  }
+
   // ── Upload today's screentime to Firestore ─────────────────────────────────
   Future<void> syncTodayScreentime({
     required String uid,
@@ -126,6 +191,54 @@ class ScreentimeService {
     } catch (_) {}
   }
 
+  // ── Stream own screentime for a date range (realtime) ────────────────────
+  Stream<List<ScreentimeModel>> streamMyScreentime({
+    required String groupId,
+    required String uid,
+    required DateTime from,
+    required DateTime to,
+  }) {
+    return _db
+        .collection('groups')
+        .doc(groupId)
+        .collection('screentime')
+        .where('uid', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: from.toIso8601String())
+        .where('date', isLessThan: to.toIso8601String())
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => ScreentimeModel.fromMap(d.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  // ── Stream all members' monthly screentime (realtime for leaderboard) ─────
+  Stream<Map<String, int>> streamAllMembersMonthlyScreentime({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime month,
+  }) {
+    final start = DateTime(month.year, month.month, 1);
+    final end = DateTime(month.year, month.month + 1, 1);
+    return _db
+        .collection('groups')
+        .doc(groupId)
+        .collection('screentime')
+        .where('date', isGreaterThanOrEqualTo: start.toIso8601String())
+        .where('date', isLessThan: end.toIso8601String())
+        .snapshots()
+        .map((snap) {
+      final Map<String, int> totals = {for (final uid in memberUids) uid: 0};
+      for (final doc in snap.docs) {
+        final s = ScreentimeModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (totals.containsKey(s.uid)) {
+          totals[s.uid] = totals[s.uid]! + s.totalMinutes;
+        }
+      }
+      return totals;
+    });
+  }
+
   // ── Get own screentime for a date range ───────────────────────────────────
   Future<List<ScreentimeModel>> getMyScreentime({
     required String groupId,
@@ -149,6 +262,30 @@ class ScreentimeService {
     } catch (_) {
       return [];
     }
+  }
+
+  // ── Get all members' weekly screentime totals (for leaderboard) ─────────
+  Future<Map<String, int>> getAllMembersWeeklyScreentime({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime weekStart,
+  }) async {
+    try {
+      final end = weekStart.add(const Duration(days: 7));
+      final snap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('screentime')
+          .where('date', isGreaterThanOrEqualTo: weekStart.toIso8601String())
+          .where('date', isLessThan: end.toIso8601String())
+          .get();
+      final Map<String, int> totals = {for (final uid in memberUids) uid: 0};
+      for (final doc in snap.docs) {
+        final s = ScreentimeModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (totals.containsKey(s.uid)) totals[s.uid] = totals[s.uid]! + s.totalMinutes;
+      }
+      return totals;
+    } catch (_) { return {}; }
   }
 
   // ── Get all members' monthly total screentime (for leaderboard) ────────────

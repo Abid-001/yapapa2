@@ -5,6 +5,7 @@ class ChatMessage {
   final String senderName;
   final String text;
   final bool isPreset; // true if this was a preset notification message
+  final bool isFixed;  // true if it's an admin-set fixed preset (shows for everyone)
   final DateTime timestamp;
 
   ChatMessage({
@@ -14,6 +15,7 @@ class ChatMessage {
     required this.senderName,
     required this.text,
     required this.isPreset,
+    this.isFixed = false,
     required this.timestamp,
   });
 
@@ -24,6 +26,7 @@ class ChatMessage {
         'senderName': senderName,
         'text': text,
         'isPreset': isPreset,
+        'isFixed': isFixed,
         'timestamp': timestamp.millisecondsSinceEpoch,
       };
 
@@ -34,6 +37,7 @@ class ChatMessage {
         senderName: map['senderName'] ?? '',
         text: map['text'] ?? '',
         isPreset: map['isPreset'] ?? false,
+        isFixed: map['isFixed'] ?? false,
         timestamp: DateTime.fromMillisecondsSinceEpoch(
             map['timestamp'] ?? 0),
       );

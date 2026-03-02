@@ -43,6 +43,137 @@ class BudgetService {
     } catch (_) {}
   }
 
+  // ── Update Expense ────────────────────────────────────────────────────────
+  Future<String?> updateExpense(ExpenseModel expense) async {
+    try {
+      await _db
+          .collection('groups')
+          .doc(expense.groupId)
+          .collection('expenses')
+          .doc(expense.id)
+          .update(expense.toMap());
+      return null;
+    } catch (e) {
+      return 'Failed to update expense. Please try again.';
+    }
+  }
+
+  // ── Get own expenses for TODAY ─────────────────────────────────────────────
+  Stream<List<ExpenseModel>> getMyDailyExpenses({
+    required String groupId,
+    required String uid,
+    required DateTime day,
+  }) {
+    final start = DateTime(day.year, day.month, day.day);
+    final end = start.add(const Duration(days: 1));
+    return _db
+        .collection('groups')
+        .doc(groupId)
+        .collection('expenses')
+        .where('uid', isEqualTo: uid)
+        .where('date', isGreaterThanOrEqualTo: start.toIso8601String())
+        .where('date', isLessThan: end.toIso8601String())
+        .orderBy('date', descending: true)
+        .snapshots()
+        .map((s) => s.docs
+            .map((d) => ExpenseModel.fromMap(d.data() as Map<String, dynamic>))
+            .toList());
+  }
+
+  // ── Get all members' daily totals (for leaderboard today) ─────────────────
+  Future<Map<String, double>> getAllMembersDailyTotal({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime day,
+  }) async {
+    try {
+      final start = DateTime(day.year, day.month, day.day);
+      final end = start.add(const Duration(days: 1));
+      final snap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('expenses')
+          .where('date', isGreaterThanOrEqualTo: start.toIso8601String())
+          .where('date', isLessThan: end.toIso8601String())
+          .get();
+      final Map<String, double> totals = {for (final uid in memberUids) uid: 0};
+      for (final doc in snap.docs) {
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (totals.containsKey(e.uid)) {
+          totals[e.uid] = totals[e.uid]! + e.amount;
+        }
+      }
+      return totals;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ── Get all members' monthly totals by TYPE (extended to support any month) ─
+  Future<Map<String, Map<String, double>>> getAllMembersTypeTotalForMonth({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime month,
+  }) async {
+    try {
+      final start = DateTime(month.year, month.month, 1);
+      final end = DateTime(month.year, month.month + 1, 1);
+      final snap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('expenses')
+          .where('date', isGreaterThanOrEqualTo: start.toIso8601String())
+          .where('date', isLessThan: end.toIso8601String())
+          .get();
+      // result[uid][type] = total
+      final Map<String, Map<String, double>> result = {
+        for (final uid in memberUids) uid: {},
+      };
+      for (final doc in snap.docs) {
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (result.containsKey(e.uid)) {
+          result[e.uid]![e.categoryType] =
+              (result[e.uid]![e.categoryType] ?? 0) + e.amount;
+        }
+      }
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
+  // ── Get all members' daily totals by TYPE ─────────────────────────────────
+  Future<Map<String, Map<String, double>>> getAllMembersTypeTotalForDay({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime day,
+  }) async {
+    try {
+      final start = DateTime(day.year, day.month, day.day);
+      final end = start.add(const Duration(days: 1));
+      final snap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('expenses')
+          .where('date', isGreaterThanOrEqualTo: start.toIso8601String())
+          .where('date', isLessThan: end.toIso8601String())
+          .get();
+      final Map<String, Map<String, double>> result = {
+        for (final uid in memberUids) uid: {},
+      };
+      for (final doc in snap.docs) {
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (result.containsKey(e.uid)) {
+          result[e.uid]![e.categoryType] =
+              (result[e.uid]![e.categoryType] ?? 0) + e.amount;
+        }
+      }
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
   // ── Get own expenses for a specific month ──────────────────────────────────
   Stream<List<ExpenseModel>> getMyMonthlyExpenses({
     required String groupId,
@@ -113,6 +244,56 @@ class BudgetService {
     } catch (_) {
       return {};
     }
+  }
+
+  // ── Get all members' weekly totals (for leaderboard) ─────────────────────
+  Future<Map<String, double>> getAllMembersWeeklyTotal({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime weekStart,
+  }) async {
+    try {
+      final end = weekStart.add(const Duration(days: 7));
+      final snap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('expenses')
+          .where('date', isGreaterThanOrEqualTo: weekStart.toIso8601String())
+          .where('date', isLessThan: end.toIso8601String())
+          .get();
+      final Map<String, double> totals = {for (final uid in memberUids) uid: 0};
+      for (final doc in snap.docs) {
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (totals.containsKey(e.uid)) totals[e.uid] = totals[e.uid]! + e.amount;
+      }
+      return totals;
+    } catch (_) { return {}; }
+  }
+
+  // ── Get all members' weekly totals by TYPE ─────────────────────────────────
+  Future<Map<String, Map<String, double>>> getAllMembersTypeTotalForWeek({
+    required String groupId,
+    required List<String> memberUids,
+    required DateTime weekStart,
+  }) async {
+    try {
+      final end = weekStart.add(const Duration(days: 7));
+      final snap = await _db
+          .collection('groups')
+          .doc(groupId)
+          .collection('expenses')
+          .where('date', isGreaterThanOrEqualTo: weekStart.toIso8601String())
+          .where('date', isLessThan: end.toIso8601String())
+          .get();
+      final Map<String, Map<String, double>> result = {for (final uid in memberUids) uid: {}};
+      for (final doc in snap.docs) {
+        final e = ExpenseModel.fromMap(doc.data() as Map<String, dynamic>);
+        if (result.containsKey(e.uid)) {
+          result[e.uid]![e.categoryType] = (result[e.uid]![e.categoryType] ?? 0) + e.amount;
+        }
+      }
+      return result;
+    } catch (_) { return {}; }
   }
 
   // ── Get all members' monthly totals (for leaderboard) ─────────────────────

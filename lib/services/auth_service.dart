@@ -6,6 +6,7 @@ import '../models/user_model.dart';
 import '../models/group_model.dart';
 import '../models/preset_message.dart';
 import 'group_listener_service.dart';
+import 'screentime_service.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -227,35 +228,44 @@ class AuthService extends ChangeNotifier {
   Future<String?> loginWithPin({
     required String username,
     required String pin,
-    String inviteCode = '',
+    required String inviteCode,
   }) async {
     _errorMessage = null;
     try {
-      // Find user by username only (no invite code needed for login)
+      // Step 1: Find group by invite code (unambiguous identifier)
+      final inviteUpper = inviteCode.trim().toUpperCase();
+      if (inviteUpper.isEmpty) {
+        _errorMessage = 'Please enter your group invite code.';
+        notifyListeners();
+        return _errorMessage;
+      }
+      final groupQuery = await _db
+          .collection('groups')
+          .where('inviteCode', isEqualTo: inviteUpper)
+          .limit(1)
+          .get();
+      if (groupQuery.docs.isEmpty) {
+        _errorMessage = 'Group not found. Check your invite code.';
+        notifyListeners();
+        return _errorMessage;
+      }
+      final group = GroupModel.fromMap(groupQuery.docs.first.data() as Map<String, dynamic>);
+
+      // Step 2: Find user by username within that group
       final userQuery = await _db
           .collection('users')
           .where('username', isEqualTo: username.trim())
+          .where('groupId', isEqualTo: group.groupId)
           .limit(1)
           .get();
-
       if (userQuery.docs.isEmpty) {
-        _errorMessage = 'Username not found. Please check and try again.';
+        _errorMessage = 'Username not found in this group. Check your username and invite code.';
         notifyListeners();
         return _errorMessage;
       }
-
       final user = UserModel.fromMap(userQuery.docs.first.data() as Map<String, dynamic>);
 
-      // Load their group
-      final groupDoc = await _db.collection('groups').doc(user.groupId).get();
-      if (!groupDoc.exists) {
-        _errorMessage = 'Group not found.';
-        notifyListeners();
-        return _errorMessage;
-      }
-      final group = GroupModel.fromMap(groupDoc.data() as Map<String, dynamic>);
-
-      // Verify PIN
+      // Step 3: Verify PIN
       final pinDoc = await _db.collection('pins').doc(user.uid).get();
       final pinData = pinDoc.data() as Map<String, dynamic>?;
       if (!pinDoc.exists || pinData == null || pinData['pin'] != _hashPin(pin)) {
@@ -264,9 +274,8 @@ class AuthService extends ChangeNotifier {
         return _errorMessage;
       }
 
-      // Re-authenticate anonymously
+      // Step 4: Authenticate
       await _auth.signInAnonymously();
-
       _currentUser = user;
       _currentGroup = group;
       await _saveSession(user.uid, group.groupId);
@@ -276,6 +285,12 @@ class AuthService extends ChangeNotifier {
         username: user.username,
       );
       notifyListeners();
+      // Backfill historical screentime in background (non-blocking)
+      // This recovers data from Android UsageStats for days missed while logged out
+      ScreentimeService().backfillHistoricalScreentime(
+        uid: user.uid,
+        groupId: group.groupId,
+      ).ignore();
       return null;
     } catch (e) {
       _errorMessage = 'Login failed. Please try again.';

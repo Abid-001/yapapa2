@@ -28,7 +28,12 @@ class _MainShellState extends State<MainShell> {
   int _notifCount = 0;
 
   List<Widget> get _screens => [
-    HomeScreen(onGoToChat: () => setState(() => _currentIndex = 4)),
+    HomeScreen(
+      onGoToChat: () => setState(() => _currentIndex = 4),
+      onGoToBudget: () => setState(() => _currentIndex = 1),
+      onGoToScreentime: () => setState(() => _currentIndex = 2),
+      onGoToLeaderboard: () => setState(() => _currentIndex = 3),
+    ),
     const BudgetScreen(),
     const ScreentimeScreen(),
     const LeaderboardScreen(),

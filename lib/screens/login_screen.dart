@@ -124,7 +124,7 @@ class _LoginScreenState extends State<LoginScreen>
 
                   // Tab Views — fixed height to avoid overflow
                   SizedBox(
-                    height: 440,
+                    height: 520,
                     child: TabBarView(
                       controller: _tabController,
                       children: [
@@ -156,21 +156,28 @@ class _LoginForm extends StatefulWidget {
 
 class _LoginFormState extends State<_LoginForm> {
   final _usernameCtrl = TextEditingController();
+  final _codeCtrl = TextEditingController();
   String _pin = '';
   String? _error;
 
   @override
   void dispose() {
     _usernameCtrl.dispose();
+    _codeCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     setState(() => _error = null);
     final username = _usernameCtrl.text.trim();
+    final inviteCode = _codeCtrl.text.trim().toUpperCase();
 
     if (username.isEmpty) {
       setState(() => _error = 'Please enter your username.');
+      return;
+    }
+    if (inviteCode.length != 6) {
+      setState(() => _error = 'Please enter your 6-character group invite code.');
       return;
     }
     if (_pin.length != 4) {
@@ -183,7 +190,7 @@ class _LoginFormState extends State<_LoginForm> {
     final err = await auth.loginWithPin(
       username: username,
       pin: _pin,
-      inviteCode: '',
+      inviteCode: inviteCode,
     );
     if (mounted) {
       widget.onLoading(false);
@@ -193,36 +200,61 @@ class _LoginFormState extends State<_LoginForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildLabel('Username'),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _usernameCtrl,
-          decoration: const InputDecoration(
-            hintText: 'Your username',
-            prefixIcon: Icon(Icons.person_outline_rounded),
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildLabel('Group Invite Code'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _codeCtrl,
+            decoration: const InputDecoration(
+              hintText: 'e.g. AB3XY7',
+              prefixIcon: Icon(Icons.group_outlined),
+            ),
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              LengthLimitingTextInputFormatter(6),
+              FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9]')),
+            ],
           ),
-          textCapitalization: TextCapitalization.words,
-        ),
-        const SizedBox(height: 20),
-        _buildLabel('PIN'),
-        const SizedBox(height: 12),
-        PinInput(onChanged: (v) => _pin = v),
-        if (_error != null) ...[
-          const SizedBox(height: 14),
-          _errorBox(_error!),
+          const SizedBox(height: 16),
+          _buildLabel('Username'),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _usernameCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Your username',
+              prefixIcon: Icon(Icons.person_outline_rounded),
+            ),
+            textCapitalization: TextCapitalization.words,
+          ),
+          const SizedBox(height: 16),
+          _buildLabel('PIN'),
+          const SizedBox(height: 12),
+          PinInput(onChanged: (v) => _pin = v),
+          if (_error != null) ...[
+            const SizedBox(height: 14),
+            _errorBox(_error!),
+          ],
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _submit,
+              child: const Text('Login'),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              'Enter the invite code shown on your group\'s home screen.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
+            ),
+          ),
         ],
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _submit,
-            child: const Text('Login'),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
