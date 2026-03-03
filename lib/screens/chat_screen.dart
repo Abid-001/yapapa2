@@ -87,24 +87,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   // ── Share from other apps ────────────────────────────────────────────────────
   void _setupShareListener() {
-    // Handle share when app is already open
-    _shareSub = ReceiveSharingIntent.instance.getMediaStream().listen((files) {
-      if (files.isNotEmpty) {
-        final text = files.first.path ?? files.first.message ?? '';
-        if (text.isNotEmpty) {
-          _msgCtrl.text = text;
-          _focusNode.requestFocus();
-        }
+    // v1.x uses static methods (no .instance)
+    _shareSub = ReceiveSharingIntent.getTextStream().listen((text) {
+      if (text != null && text.isNotEmpty) {
+        _msgCtrl.text = text;
+        _focusNode.requestFocus();
       }
     });
-    // Handle initial share (app was closed)
-    ReceiveSharingIntent.instance.getInitialMedia().then((files) {
-      if (files.isNotEmpty) {
-        final text = files.first.path ?? files.first.message ?? '';
-        if (text.isNotEmpty) {
-          _msgCtrl.text = text;
-          _focusNode.requestFocus();
-        }
+    ReceiveSharingIntent.getInitialText().then((text) {
+      if (text != null && text.isNotEmpty) {
+        _msgCtrl.text = text;
+        _focusNode.requestFocus();
       }
     });
   }
