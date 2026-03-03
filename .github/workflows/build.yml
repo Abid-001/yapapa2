@@ -56,7 +56,7 @@ jobs:
         run: |
           touch build_log.txt
           set -o pipefail
-          flutter build apk --release --verbose 2>&1 | tee build_log.txt
+          flutter build apk --release 2>&1 | tee build_log.txt
 
       - name: Show analyze log on failure
         if: failure()
