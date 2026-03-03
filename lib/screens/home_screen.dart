@@ -9,8 +9,10 @@ import '../services/auth_service.dart';
 import '../services/budget_service.dart';
 import '../models/expense_model.dart';
 import '../models/group_model.dart';
+import '../models/user_model.dart';
 import '../widgets/common_widgets.dart';
 import 'preset_notification_sheet.dart';
+import 'budget_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final VoidCallback? onGoToChat;
@@ -52,15 +54,19 @@ class _HomeScreenState extends State<HomeScreen> {
           _WelcomeRow(username: user.username, isAdmin: user.isAdmin),
           const SizedBox(height: 12),
 
-          // ── Monthly reminder banners ────────────────────────────────────
+          // ── Group reminder banners (admin-set) ─────────────────────
           ..._activeReminders(group.monthlyReminders).map((r) => Padding(
             padding: const EdgeInsets.only(bottom: 10),
-            child: _ReminderBanner(text: r.text),
+            child: _ReminderBanner(text: r.text, isPersonal: false),
+          )),
+          // ── Personal reminder banners (user-set) ──────────────────────
+          ..._activePersonalReminders(user.personalReminders).map((r) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _ReminderBanner(text: r.text, isPersonal: true),
           )),
 
           const SizedBox(height: 8),
-          _InviteCodeCard(code: group.inviteCode),
-          const SizedBox(height: 20),
+
 
           // ── Clickable stat cards ────────────────────────────────────────
           StreamBuilder<List<ExpenseModel>>(
@@ -92,6 +98,26 @@ class _HomeScreenState extends State<HomeScreen> {
           SectionHeader(title: 'Quick Notification'),
           const SizedBox(height: 12),
           _QuickPresetButton(),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => showModalBottomSheet(
+                context: context,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => const AddExpenseSheet(),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Add Expense'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.accent,
+                foregroundColor: Colors.black,
+                padding: const EdgeInsets.symmetric(vertical: 13),
+                textStyle: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
           const SizedBox(height: 20),
 
           SectionHeader(title: 'Recent Notifications'),
@@ -100,14 +126,21 @@ class _HomeScreenState extends State<HomeScreen> {
             onTap: () => widget.onGoToChat?.call(),
             child: _RecentNotificationsPreview(groupId: group.groupId),
           ),
+          const SizedBox(height: 20),
+          _PersonalRemindersSection(user: user),
         ]),
       ),
     );
   }
 }
 
-// ── Reminder helper ───────────────────────────────────────────────────────────
+// ── Reminder helpers ──────────────────────────────────────────────────────────
 List<MonthlyReminder> _activeReminders(List<MonthlyReminder> all) {
+  final today = DateTime.now().day;
+  return all.where((r) => today >= r.startDay && today <= r.endDay).toList();
+}
+
+List<PersonalReminder> _activePersonalReminders(List<PersonalReminder> all) {
   final today = DateTime.now().day;
   return all.where((r) => today >= r.startDay && today <= r.endDay).toList();
 }
@@ -115,7 +148,8 @@ List<MonthlyReminder> _activeReminders(List<MonthlyReminder> all) {
 // ── Reminder Banner ───────────────────────────────────────────────────────────
 class _ReminderBanner extends StatelessWidget {
   final String text;
-  const _ReminderBanner({required this.text});
+  final bool isPersonal;
+  const _ReminderBanner({required this.text, this.isPersonal = false});
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +158,9 @@ class _ReminderBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [AppTheme.accentOrange.withOpacity(0.18), AppTheme.accentYellow.withOpacity(0.10)],
+          colors: isPersonal
+            ? [AppTheme.primary.withOpacity(0.18), AppTheme.primaryLight.withOpacity(0.10)]
+            : [AppTheme.accentOrange.withOpacity(0.18), AppTheme.accentYellow.withOpacity(0.10)],
           begin: Alignment.topLeft, end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(14),
@@ -348,5 +384,131 @@ class _RecentNotificationsPreview extends StatelessWidget {
     final h = dt.hour.toString().padLeft(2, '0');
     final m = dt.minute.toString().padLeft(2, '0');
     return '$h:$m';
+  }
+}
+
+// ── Personal Reminders Section ────────────────────────────────────────────────
+class _PersonalRemindersSection extends StatefulWidget {
+  final UserModel user;
+  const _PersonalRemindersSection({required this.user});
+  @override
+  State<_PersonalRemindersSection> createState() => _PersonalRemindersSectionState();
+}
+
+class _PersonalRemindersSectionState extends State<_PersonalRemindersSection> {
+  List<PersonalReminder> get _reminders => widget.user.personalReminders;
+
+  Future<void> _save(List<PersonalReminder> updated) async {
+    await context.read<AuthService>().updatePersonalReminders(updated);
+  }
+
+  void _showAddDialog([PersonalReminder? existing, int? idx]) {
+    final textCtrl = TextEditingController(text: existing?.text ?? '');
+    int startDay = existing?.startDay ?? 1;
+    int endDay = existing?.endDay ?? 5;
+    String? err;
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, ss) => AlertDialog(
+        title: Text(existing == null ? 'Add Reminder' : 'Edit Reminder',
+          style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: textCtrl, maxLines: 2, autofocus: true,
+            decoration: const InputDecoration(hintText: 'Reminder text...')),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('Start day', style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary)),
+              DropdownButton<int>(
+                value: startDay, isExpanded: true,
+                items: List.generate(28, (i) => DropdownMenuItem(value: i+1, child: Text('${i+1}'))),
+                onChanged: (v) => ss(() => startDay = v!),
+              ),
+            ])),
+            const SizedBox(width: 12),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('End day', style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary)),
+              DropdownButton<int>(
+                value: endDay, isExpanded: true,
+                items: List.generate(28, (i) => DropdownMenuItem(value: i+1, child: Text('${i+1}'))),
+                onChanged: (v) => ss(() => endDay = v!),
+              ),
+            ])),
+          ]),
+          if (err != null) Padding(padding: const EdgeInsets.only(top: 8),
+            child: Text(err!, style: const TextStyle(color: AppTheme.error, fontSize: 12))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final text = textCtrl.text.trim();
+              if (text.isEmpty) { ss(() => err = 'Enter reminder text.'); return; }
+              if (endDay < startDay) { ss(() => err = 'End day must be ≥ start day.'); return; }
+              final r = PersonalReminder(
+                id: existing?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+                text: text, startDay: startDay, endDay: endDay,
+              );
+              final updated = List<PersonalReminder>.from(_reminders);
+              if (idx != null) updated[idx] = r; else updated.add(r);
+              Navigator.pop(ctx);
+              _save(updated);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      )),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+        Text('My Reminders', style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
+        TextButton.icon(
+          onPressed: _reminders.length < 5 ? () => _showAddDialog() : null,
+          icon: const Icon(Icons.add_rounded, size: 16),
+          label: Text('Add', style: GoogleFonts.inter(fontSize: 13)),
+          style: TextButton.styleFrom(foregroundColor: AppTheme.primary, padding: EdgeInsets.zero),
+        ),
+      ]),
+      if (_reminders.isEmpty)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text('No personal reminders. Add one to see it here during set dates.',
+            style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textHint)),
+        )
+      else
+        ..._reminders.asMap().entries.map((e) {
+          final r = e.value;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceElevated,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.primary.withOpacity(0.2)),
+            ),
+            child: Row(children: [
+              const Icon(Icons.person_pin_rounded, color: AppTheme.primary, size: 16),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(r.text, style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary)),
+                Text('Day ${r.startDay}–${r.endDay} each month',
+                  style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textHint)),
+              ])),
+              IconButton(icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.textHint),
+                onPressed: () => _showAddDialog(r, e.key), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+              IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.error),
+                onPressed: () {
+                  final updated = List<PersonalReminder>.from(_reminders)..removeAt(e.key);
+                  _save(updated);
+                },
+                padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+            ]),
+          );
+        }),
+    ]);
   }
 }

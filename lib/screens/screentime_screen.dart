@@ -768,9 +768,9 @@ class _PokeSheetState extends State<PokeSheet> {
           .where('fromUid', isEqualTo: fromUid)
           .where('targetUid', isEqualTo: widget.targetUid)
           .where('timestamp', isGreaterThanOrEqualTo: midnight)
-          .limit(1)
+          .limit(5)
           .get();
-      if (existing.docs.isNotEmpty) {
+      if (existing.docs.length >= 5) {
         if (mounted) setState(() {
           _alreadyPoked = true;
           _loading = false;
@@ -855,7 +855,7 @@ class _PokeSheetState extends State<PokeSheet> {
             ),
             const SizedBox(height: 6),
             Text(
-              'You can only poke ${widget.targetName} once per day.',
+              'You\'ve already poked ${widget.targetName} 5 times today.',
               textAlign: TextAlign.center,
               style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary),
             ),

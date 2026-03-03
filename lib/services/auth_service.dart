@@ -371,6 +371,16 @@ class AuthService extends ChangeNotifier {
   }
 
   
+  Future<void> updatePersonalReminders(List<PersonalReminder> reminders) async {
+    if (_currentUser == null) return;
+    try {
+      final data = reminders.map((r) => r.toMap()).toList();
+      await _db.collection('users').doc(_currentUser!.uid).update({'personalReminders': data});
+      _currentUser = _currentUser!.copyWith(personalReminders: reminders);
+      notifyListeners();
+    } catch (_) {}
+  }
+
   Future<void> updateMonthlyReminders(List<MonthlyReminder> reminders) async {
     if (_currentGroup == null) return;
     await _db.collection('groups').doc(_currentGroup!.groupId).update({

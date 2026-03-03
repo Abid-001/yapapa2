@@ -84,7 +84,7 @@ class _MyExpensesTabState extends State<_MyExpensesTab> with SingleTickerProvide
   }
 
   void _showAddSheet(BuildContext context) {
-    showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const _AddExpenseSheet());
+    showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => const AddExpenseSheet());
   }
 }
 
@@ -160,7 +160,7 @@ class _ExpensePeriodView extends StatelessWidget {
                   child: _ExpenseTile(
                     expense: e,
                     onDelete: () async => await BudgetService().deleteExpense(groupId, e.id),
-                    onEdit: () => showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => _AddExpenseSheet(existing: e)),
+                    onEdit: () => showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (_) => AddExpenseSheet(existing: e)),
                   ),
                 )),
             ] else if (expenses.isEmpty)
@@ -173,14 +173,14 @@ class _ExpensePeriodView extends StatelessWidget {
 }
 
 // ─── Add / Edit Expense Bottom Sheet ─────────────────────────────────────────
-class _AddExpenseSheet extends StatefulWidget {
+class AddExpenseSheet extends StatefulWidget {
   final ExpenseModel? existing;
-  const _AddExpenseSheet({this.existing});
+  const AddExpenseSheet({super.key, this.existing});
   @override
-  State<_AddExpenseSheet> createState() => _AddExpenseSheetState();
+  State<AddExpenseSheet> createState() => _AddExpenseSheetState();
 }
 
-class _AddExpenseSheetState extends State<_AddExpenseSheet> {
+class _AddExpenseSheetState extends State<AddExpenseSheet> {
   final BudgetService _budgetService = BudgetService();
   late final TextEditingController _amountCtrl;
   late final TextEditingController _categoryCtrl;

@@ -26,16 +26,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
   int _notifCount = 0;
-
-  List<Widget> get _screens => [
-    HomeScreen(
-      onGoToChat: () => setState(() => _currentIndex = 1),
-      onGoToBudget: _showBudgetModal,
-      onGoToScreentime: _showScreentimeModal,
-      onGoToLeaderboard: _showLeaderboardModal,
-    ),
-    const ChatScreen(),
-  ];
+  late final List<Widget> _screens;
 
   final List<String> _titles = [
     'Home',
@@ -48,21 +39,44 @@ class _MainShellState extends State<MainShell> {
   ];
 
   void _showBudgetModal() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetScreen()));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(title: Text('Budget', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary))),
+      body: const BudgetScreen(),
+    )));
   }
 
   void _showScreentimeModal() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ScreentimeScreen()));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(title: Text('Screentime', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary))),
+      body: const ScreentimeScreen(),
+    )));
   }
 
   void _showLeaderboardModal() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
+    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(title: Text('Leaderboard', style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary))),
+      body: const LeaderboardScreen(),
+    )));
   }
 
   @override
   void initState() {
     super.initState();
+    _screens = [
+      HomeScreen(
+        onGoToChat: () => setState(() => _currentIndex = 1),
+        onGoToBudget: _showBudgetModal,
+        onGoToScreentime: _showScreentimeModal,
+        onGoToLeaderboard: _showLeaderboardModal,
+      ),
+      const ChatScreen(),
+    ];
     _loadNotifCount();
+    // Listen to unread count from ChatScreen
+    chatUnreadCount.addListener(() { if (mounted) setState(() {}); });
   }
 
   Future<void> _loadNotifCount() async {
@@ -204,13 +218,25 @@ class _MainShellState extends State<MainShell> {
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Icon(
-                              _icons[i],
-                              size: 22,
-                              color: selected
-                                  ? AppTheme.primary
-                                  : AppTheme.textHint,
-                            ),
+                            child: Stack(clipBehavior: Clip.none, children: [
+                              Icon(
+                                _icons[i],
+                                size: 22,
+                                color: selected ? AppTheme.primary : AppTheme.textHint,
+                              ),
+                              // Unread dot for chat tab (index 1)
+                              if (i == 1 && !selected && chatUnreadCount.value > 0)
+                                Positioned(
+                                  top: -3, right: -3,
+                                  child: Container(
+                                    width: 8, height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF00A884),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                ),
+                            ]),
                           ),
                           const SizedBox(height: 2),
                           Text(

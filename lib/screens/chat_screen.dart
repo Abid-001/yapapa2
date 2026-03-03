@@ -26,9 +26,20 @@ const _kTickSent     = Color(0xFF8696A0);
 const _kTickSeen     = Color(0xFF53BDEB);
 const _kWaGreen      = Color(0xFF00A884);
 
+// Single emoji check (no ASCII letters/digits, non-ASCII chars present)
+bool _isSingleEmoji(String text) {
+  final t = text.trim();
+  if (t.isEmpty || t.length > 8) return false;
+  if (RegExp(r'[a-zA-Z0-9 ]').hasMatch(t)) return false;
+  return t.runes.any((r) => r > 127);
+}
+
 const _kReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Exposes unread count to MainShell for the nav dot
+final ValueNotifier<int> chatUnreadCount = ValueNotifier(0);
+
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
   @override
@@ -47,6 +58,8 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> _presetPolls = [];
   bool _loading = true;
   bool _sending = false;
+  bool _firstLoad = true;
+  int? _firstUnreadIndex;
   ChatMessage? _replyTo;
 
   // Link preview state
@@ -155,7 +168,16 @@ class _ChatScreenState extends State<ChatScreen> {
       }).whereType<ChatMessage>().where((m) => !m.isExpired).where((m) => !m.isPreset || m.isFixed).toList()
         ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
       setState(() { _messages = msgs; _loading = false; });
-      WidgetsBinding.instance.addPostFrameCallback((_) { _scrollToBottom(); _markAllSeen(); });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_firstLoad) {
+          _firstLoad = false;
+          _scrollToFirstUnread();
+        } else {
+          _scrollToBottom();
+        }
+        _markAllSeen();
+        _updateUnreadCount();
+      });
     });
   }
 
@@ -186,6 +208,34 @@ class _ChatScreenState extends State<ChatScreen> {
     for (final msg in _messages) {
       if (msg.senderUid != uid && !msg.seenBy.contains(uid)) {
         _dbRef.child('chats/$_groupId/messages/${msg.id}/seenBy/$uid').set(true).ignore();
+      }
+    }
+    if (_firstUnreadIndex != null && mounted) setState(() => _firstUnreadIndex = null);
+    chatUnreadCount.value = 0;
+  }
+
+  void _updateUnreadCount() {
+    final uid = _myUid;
+    if (uid.isEmpty) return;
+    final count = _messages.where((m) =>
+      m.senderUid != uid && !m.seenBy.contains(uid) && !m.isPreset).length;
+    chatUnreadCount.value = count;
+  }
+
+  void _scrollToFirstUnread() {
+    final uid = _myUid;
+    if (uid.isEmpty) { _scrollToBottom(); return; }
+    final idx = _messages.indexWhere(
+      (m) => m.senderUid != uid && !m.seenBy.contains(uid));
+    if (idx < 0) {
+      _scrollToBottom();
+    } else {
+      _firstUnreadIndex = idx;
+      if (mounted) setState(() {});
+      // Scroll so first unread is near top (leave some context above)
+      final offset = (idx > 1 ? idx - 1 : 0) * 72.0;
+      if (_scrollCtrl.hasClients) {
+        _scrollCtrl.jumpTo(offset.clamp(0, _scrollCtrl.position.maxScrollExtent));
       }
     }
   }
@@ -352,9 +402,12 @@ class _ChatScreenState extends State<ChatScreen> {
   void _showCreatePoll() {
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
-      builder: (_) => _CreatePollSheet(
+      builder: (sheetCtx) => _CreatePollSheet(
         presetPolls: _presetPolls,
-        onSend: (q, opts, multi, presetId) { Navigator.pop(context); _sendPoll(question: q, options: opts, allowMultiple: multi, presetId: presetId); },
+        onSend: (q, opts, multi, presetId) {
+          Navigator.pop(sheetCtx); // pop the sheet, not the chat screen
+          _sendPoll(question: q, options: opts, allowMultiple: multi, presetId: presetId);
+        },
       ),
     );
   }
@@ -381,18 +434,6 @@ class _ChatScreenState extends State<ChatScreen> {
         // Pinned banner
         if (_pins.isNotEmpty) _PinnedBanner(pins: _pins, onUnpin: _unpinMessage, onTap: _scrollToMessage),
 
-        // Auto-delete notice
-        Container(
-          margin: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          decoration: BoxDecoration(color: const Color(0xFF1A2C35), borderRadius: BorderRadius.circular(8)),
-          child: Row(children: [
-            const Icon(Icons.lock_outline_rounded, size: 12, color: _kTickSent),
-            const SizedBox(width: 5),
-            Text('Messages auto-delete after 30 days', style: GoogleFonts.inter(fontSize: 11, color: _kTickSent)),
-          ]),
-        ),
-
         // Messages
         Expanded(
           child: _loading
@@ -411,7 +452,9 @@ class _ChatScreenState extends State<ChatScreen> {
                     final nextMsg = isLast ? null : _messages[i + 1];
                     final showTime = isLast || nextMsg!.senderUid != msg.senderUid || !_isSameMinute(msg.timestamp, nextMsg.timestamp);
                     final showAvatar = !isMe && (isLast || nextMsg!.senderUid != msg.senderUid);
+                    final isFirstUnread = _firstUnreadIndex != null && i == _firstUnreadIndex;
                     return Column(children: [
+                      if (isFirstUnread) _UnreadDivider(),
                       if (showDateDivider) _DateDivider(date: msg.timestamp),
                       _MessageBubble(
                         message: msg, isMe: isMe, showTime: showTime,
@@ -758,6 +801,45 @@ class _MessageBubbleState extends State<_MessageBubble> {
   double _dragX = 0;
   bool _triggered = false;
 
+  void _showWhoReacted(BuildContext context, Map<String, String> reactions) {
+    final Map<String, List<String>> byEmoji = {};
+    for (final e in reactions.entries) {
+      byEmoji.putIfAbsent(e.value, () => []).add(e.key);
+    }
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1F2C34),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Center(child: Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(color: _kTickSent.withOpacity(0.4), borderRadius: BorderRadius.circular(2)))),
+          Text('Reactions', style: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.white)),
+          const SizedBox(height: 12),
+          ...byEmoji.entries.map((entry) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(children: [
+              Text(entry.key, style: const TextStyle(fontSize: 22)),
+              const SizedBox(width: 12),
+              Expanded(child: Text(
+                '${entry.value.length} ${entry.value.length == 1 ? "person" : "people"}',
+                style: GoogleFonts.inter(fontSize: 13, color: Colors.white),
+              )),
+              GestureDetector(
+                onTap: () { Navigator.pop(context); widget.onReact(entry.key); },
+                child: Text('Toggle mine', style: GoogleFonts.inter(fontSize: 12, color: _kWaGreen)),
+              ),
+            ]),
+          )),
+        ]),
+      ),
+    );
+  }
+
   void _openProfile(BuildContext context) {
     FirebaseFirestore.instance.collection('users').doc(widget.message.senderUid).get().then((doc) {
       if (doc.exists && context.mounted) {
@@ -774,6 +856,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
 
     final timeStr = DateFormat('HH:mm').format(msg.timestamp);
     final bubbleColor = msg.isDeleted ? const Color(0xFF182229) : widget.isMe ? _kMyBubble : _kTheirBubble;
+    final isBigEmoji = !msg.isDeleted && !msg.isPoll && _isSingleEmoji(msg.text) && msg.replyToText == null;
 
     Widget? ticks;
     if (widget.isMe && !msg.isDeleted) {
@@ -789,16 +872,27 @@ class _MessageBubbleState extends State<_MessageBubble> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 2),
       child: GestureDetector(
-        onHorizontalDragUpdate: (d) { if (d.delta.dx > 0) setState(() { _dragX = (_dragX + d.delta.dx).clamp(0, 60); }); },
+        onHorizontalDragUpdate: (d) {
+          final dx = d.delta.dx;
+          // isMe: swipe LEFT (negative); others: swipe RIGHT (positive)
+          final isCorrectDir = widget.isMe ? dx < 0 : dx > 0;
+          if (isCorrectDir) {
+            setState(() { _dragX = (_dragX + dx.abs()).clamp(0.0, 64.0); });
+          } else if (_dragX > 0) {
+            // Swipe opposite direction → cancel
+            setState(() { _dragX = (_dragX - dx.abs() * 1.5).clamp(0.0, 64.0); });
+          }
+        },
         onHorizontalDragEnd: (d) {
           if (_dragX > 40 && !_triggered) {
-            _triggered = true; HapticFeedback.mediumImpact(); widget.onReply();
+            _triggered = true;
+            HapticFeedback.mediumImpact();
+            widget.onReply();
           }
           setState(() { _dragX = 0; _triggered = false; });
         },
-        child: AnimatedPadding(
-          duration: const Duration(milliseconds: 80),
-          padding: EdgeInsets.only(left: widget.isMe ? 0 : _dragX, right: widget.isMe ? _dragX : 0),
+        child: Transform.translate(
+          offset: Offset(widget.isMe ? -_dragX : _dragX, 0),
           child: Row(
             mainAxisAlignment: widget.isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -823,16 +917,20 @@ class _MessageBubbleState extends State<_MessageBubble> {
                 child: Column(
                   crossAxisAlignment: widget.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                   children: [
-                    // Swipe icon
-                    if (_dragX > 20)
-                      Padding(
-                        padding: EdgeInsets.only(left: widget.isMe ? 0 : 4, right: widget.isMe ? 4 : 0, bottom: 4),
-                        child: Icon(Icons.reply_rounded, color: _kWaGreen.withOpacity(_dragX / 60), size: 20),
-                      ),
-
                     GestureDetector(
                       onLongPress: widget.onLongPress,
-                      child: Container(
+                      child: isBigEmoji
+                        ? Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                            child: IntrinsicWidth(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                              Text(msg.text, style: const TextStyle(fontSize: 44, height: 1.1)),
+                              if (widget.showTime) Row(mainAxisAlignment: MainAxisAlignment.end, mainAxisSize: MainAxisSize.min, children: [
+                                Text(DateFormat('HH:mm').format(msg.timestamp), style: GoogleFonts.inter(fontSize: 10, color: _kTickSent)),
+                                if (widget.isMe) ...[const SizedBox(width: 3), Icon(Icons.done_all_rounded, size: 14, color: msg.seenBy.where((u) => u != widget.myUid).isNotEmpty ? _kTickSeen : _kTickSent)],
+                              ]),
+                            ])),
+                          )
+                        : Container(
                         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
                         decoration: BoxDecoration(
                           color: bubbleColor,
@@ -844,108 +942,39 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         ),
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-                          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-                            // Sender name
-                            if (!widget.isMe && !msg.isDeleted)
-                              GestureDetector(
-                                onTap: () => _openProfile(context),
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 3),
-                                  child: Text(msg.senderName, style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700, color: _nameColor(msg.senderName))),
-                                ),
-                              ),
+                          child: IntrinsicWidth(
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:http/http.dart' as http;
+import '../theme/app_theme.dart';
+import '../services/auth_service.dart';
+import '../models/chat_message.dart';
+import '../models/user_model.dart';
+import '../widgets/common_widgets.dart';
+import 'member_profile_screen.dart';
 
-                            // Reply preview
-                            if (!msg.isDeleted && msg.replyToText != null)
-                              Container(
-                                margin: const EdgeInsets.only(bottom: 6),
-                                padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
-                                decoration: BoxDecoration(
-                                  color: widget.isMe ? _kReplyMyBg : _kReplyTheirBg,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border(left: BorderSide(color: widget.isMe ? const Color(0xFF4FCDA5) : _kWaGreen, width: 3)),
-                                ),
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(msg.replyToSender ?? '', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: widget.isMe ? const Color(0xFF4FCDA5) : _kWaGreen)),
-                                  Text(msg.replyToText!, style: GoogleFonts.inter(fontSize: 12, color: _kTickSent), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                ]),
-                              ),
+// ── WhatsApp-style colors ──────────────────────────────────────────────────────
+const _kMyBubble     = Color(0xFF005C4B);
+const _kTheirBubble  = Color(0xFF1F2C34);
+const _kChatBg       = Color(0xFF0B141A);
+const _kReplyMyBg    = Color(0xFF025144);
+const _kReplyTheirBg = Color(0xFF182229);
+const _kTickSent     = Color(0xFF8696A0);
+const _kTickSeen     = Color(0xFF53BDEB);
+const _kWaGreen      = Color(0xFF00A884);
 
-                            // Poll or text
-                            if (msg.isPoll && !msg.isDeleted)
-                              _PollBubble(msg: msg, myUid: widget.myUid, onVote: widget.onVote)
-                            else
-                              _buildTextWithLinks(
-                                msg.isDeleted ? 'This message was removed.' : msg.text,
-                                style: GoogleFonts.inter(
-                                  fontSize: 14.5, height: 1.35,
-                                  color: msg.isDeleted ? _kTickSent : Colors.white,
-                                  fontStyle: msg.isDeleted ? FontStyle.italic : FontStyle.normal,
-                                ),
-                              ),
-
-                            if (!msg.isDeleted && !msg.isPoll && msg.editedText != null)
-                              Text(' (edited)', style: GoogleFonts.inter(fontSize: 10, color: _kTickSent, fontStyle: FontStyle.italic)),
-
-                            // Link preview card inside bubble
-                            if (!msg.isDeleted && msg.linkPreview != null && (msg.linkPreview!['title'] ?? '').isNotEmpty)
-                              _InlineLinkPreview(preview: msg.linkPreview!),
-
-                            // Time + ticks (right-aligned)
-                            if (widget.showTime)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 4),
-                                child: Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                                    Text(timeStr, style: GoogleFonts.inter(fontSize: 10, color: _kTickSent)),
-                                    if (ticks != null) ...[const SizedBox(width: 3), ticks],
-                                  ]),
-                                ),
-                              ),
-                          ]),
-                        ),
-                      ),
-                    ),
-
-                    // Reactions
-                    if (reactionCounts.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
-                        child: Wrap(spacing: 4, children: reactionCounts.entries.map((e) {
-                          final isMine = myReaction == e.key;
-                          return GestureDetector(
-                            onTap: () => widget.onReact(e.key),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: isMine ? _kWaGreen.withOpacity(0.2) : const Color(0xFF1F2C34),
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: isMine ? _kWaGreen : const Color(0xFF2A3C47)),
-                              ),
-                              child: Text('${e.key} ${e.value}', style: GoogleFonts.inter(fontSize: 12, color: Colors.white)),
-                            ),
-                          );
-                        }).toList()),
-                      ),
-                  ],
-                ),
-              ),
-              if (widget.isMe) const SizedBox(width: 4),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Color _nameColor(String name) {
-    const colors = [Color(0xFF53BDEB), Color(0xFF4FCDA5), Color(0xFFFC8E40), Color(0xFFD176D4), Color(0xFF5DC7F1), Color(0xFFBE9FE1)];
-    return colors[name.hashCode.abs() % colors.length];
-  }
+// Single emoji check (no ASCII letters/digits, non-ASCII chars present)
+bool _isSingleEmoji(String text) {
+  final t = text.trim();
+  if (t.isEmpty || t.length > 8) return false;
+  if (RegExp(r'[a-zA-Z0-9 ]').hasMatch(t)) return false;
+  return t.runes.any((r) => r > 127);
 }
 
-// ─── Inline Link Preview Card ─────────────────────────────────────────────────
+const _kReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+
 class _InlineLinkPreview extends StatelessWidget {
   final Map<String, String> preview;
   const _InlineLinkPreview({required this.preview});
@@ -983,254 +1012,27 @@ class _InlineLinkPreview extends StatelessWidget {
   }
 }
 
-// ─── Options Sheet ────────────────────────────────────────────────────────────
-class _OptionsSheet extends StatelessWidget {
-  final ChatMessage msg;
-  final bool isMe;
-  final bool canDelete;
-  final bool isPinned;
-  final String myUid;
-  final int memberCount;
-  final void Function(String) onReact;
-  final VoidCallback onReply;
-  final VoidCallback? onEdit;
-  final VoidCallback? onDelete;
-  final VoidCallback onPin;
 
-  const _OptionsSheet({
-    required this.msg, required this.isMe, required this.canDelete,
-    required this.isPinned, required this.myUid, required this.memberCount,
-    required this.onReact, required this.onReply, this.onEdit, this.onDelete, required this.onPin,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final seenUids = msg.seenBy.where((u) => u != msg.senderUid).toList();
-    return Container(
-      decoration: const BoxDecoration(color: Color(0xFF1F2C34), borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 16),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Container(width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
-          decoration: BoxDecoration(color: _kTickSent.withOpacity(0.4), borderRadius: BorderRadius.circular(2))),
-        // Emoji picker
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(color: const Color(0xFF2A3C47), borderRadius: BorderRadius.circular(30)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: _kReactionEmojis.map((emoji) {
-            final sel = msg.reactions[myUid] == emoji;
-            return GestureDetector(
-              onTap: () => onReact(emoji),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(color: sel ? _kWaGreen.withOpacity(0.3) : Colors.transparent, shape: BoxShape.circle),
-                child: Text(emoji, style: const TextStyle(fontSize: 24)),
-              ),
-            );
-          }).toList()),
-        ),
-        const SizedBox(height: 12),
-        const Divider(color: Color(0xFF2A3C47), height: 1),
-        _ATile(icon: Icons.reply_rounded, label: 'Reply', onTap: onReply),
-        if (onEdit != null) _ATile(icon: Icons.edit_outlined, label: 'Edit', onTap: onEdit!),
-        _ATile(icon: isPinned ? Icons.push_pin_outlined : Icons.push_pin_rounded, label: isPinned ? 'Unpin' : 'Pin message', color: _kTickSeen, onTap: onPin),
-        if (onDelete != null) _ATile(icon: Icons.delete_outline_rounded, label: 'Remove for everyone', color: AppTheme.error, onTap: onDelete!),
-        if (seenUids.isNotEmpty) ...[
-          const Divider(color: Color(0xFF2A3C47), height: 1),
-          Padding(
-            padding: const EdgeInsets.only(top: 8, left: 4),
-            child: Row(children: [
-              const Icon(Icons.done_all_rounded, size: 14, color: _kTickSeen),
-              const SizedBox(width: 6),
-              Text('Read by ${seenUids.length} ${seenUids.length == 1 ? "person" : "people"}',
-                style: GoogleFonts.inter(fontSize: 12, color: _kTickSeen, fontWeight: FontWeight.w600)),
-            ]),
-          ),
-        ],
-      ]),
-    );
-  }
-}
-
-class _ATile extends StatelessWidget {
-  final IconData icon; final String label; final Color color; final VoidCallback onTap;
-  const _ATile({required this.icon, required this.label, required this.onTap, this.color = Colors.white});
-  @override
-  Widget build(BuildContext context) => ListTile(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0), dense: true,
-    leading: Icon(icon, color: color, size: 20),
-    title: Text(label, style: GoogleFonts.inter(fontSize: 14, color: color)),
-    onTap: onTap,
-  );
-}
-
-// ─── Pinned Banner ────────────────────────────────────────────────────────────
-class _PinnedBanner extends StatefulWidget {
-  final List<Map<String, dynamic>> pins;
-  final void Function(String) onUnpin;
-  final void Function(String) onTap;
-  const _PinnedBanner({required this.pins, required this.onUnpin, required this.onTap});
-  @override
-  State<_PinnedBanner> createState() => _PinnedBannerState();
-}
-class _PinnedBannerState extends State<_PinnedBanner> {
-  int _cur = 0;
-  @override
-  Widget build(BuildContext context) {
-    final pin = widget.pins[_cur % widget.pins.length];
-    return GestureDetector(
-      onTap: () { widget.onTap(pin['id'] ?? ''); setState(() => _cur = (_cur + 1) % widget.pins.length); },
-      child: Container(
-        color: const Color(0xFF1F2C34),
-        padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-        child: Row(children: [
-          Container(width: 3, height: 36, color: _kWaGreen, margin: const EdgeInsets.only(right: 10)),
-          const Icon(Icons.push_pin_rounded, size: 14, color: _kWaGreen),
-          const SizedBox(width: 6),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Pinned message${widget.pins.length > 1 ? " (${_cur + 1}/${widget.pins.length})" : ""}',
-              style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700, color: _kWaGreen)),
-            Text(pin['text'] ?? '', style: GoogleFonts.inter(fontSize: 12, color: _kTickSent), maxLines: 1, overflow: TextOverflow.ellipsis),
-          ])),
-          IconButton(icon: const Icon(Icons.close_rounded, size: 16, color: _kTickSent),
-            onPressed: () => widget.onUnpin(pin['id'] ?? ''), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-        ]),
-      ),
-    );
-  }
-}
-
-// ─── Build text with clickable links ─────────────────────────────────────────
-Widget _buildTextWithLinks(String text, {required TextStyle style}) {
-  final urlRe = RegExp(r'(https?://[^\s]+|www\.[^\s]+)', caseSensitive: false);
-  if (!urlRe.hasMatch(text)) return Text(text, style: style);
-  final spans = <InlineSpan>[];
-  int last = 0;
-  for (final m in urlRe.allMatches(text)) {
-    if (m.start > last) spans.add(TextSpan(text: text.substring(last, m.start), style: style));
-    final url = m.group(0)!;
-    spans.add(WidgetSpan(child: GestureDetector(
-      onTap: () async {
-        final uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
-        if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
-      },
-      child: Text(url, style: style.copyWith(color: const Color(0xFF53BDEB), decoration: TextDecoration.underline, decorationColor: const Color(0xFF53BDEB))),
-    )));
-    last = m.end;
-  }
-  if (last < text.length) spans.add(TextSpan(text: text.substring(last), style: style));
-  return Text.rich(TextSpan(children: spans));
-}
-
-// ─── Preset Message Bubble ────────────────────────────────────────────────────
-class _PresetMessageBubble extends StatelessWidget {
-  final ChatMessage message;
-  const _PresetMessageBubble({required this.message});
-  @override
-  Widget build(BuildContext context) {
-    final timeStr = DateFormat('HH:mm').format(message.timestamp);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-      child: Center(child: Container(
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(color: const Color(0xFF1A2C35), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.accent.withOpacity(0.25))),
-        child: Column(children: [
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.notifications_active_rounded, size: 13, color: AppTheme.accent),
-            const SizedBox(width: 5),
-            Text('${message.senderName} sent a notification', style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.accent)),
-          ]),
-          const SizedBox(height: 5),
-          Text(message.text, textAlign: TextAlign.center, style: GoogleFonts.inter(fontSize: 13.5, color: Colors.white, fontStyle: FontStyle.italic, height: 1.3)),
-          const SizedBox(height: 4),
-          Text(timeStr, style: GoogleFonts.inter(fontSize: 10, color: _kTickSent)),
-        ]),
-      )),
-    );
-  }
-}
-
-// ─── Date Divider ─────────────────────────────────────────────────────────────
-class _DateDivider extends StatelessWidget {
-  final DateTime date;
-  const _DateDivider({required this.date});
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final d = DateTime(date.year, date.month, date.day);
-    final label = d == today ? 'Today' : d == yesterday ? 'Yesterday' : DateFormat('d MMM yyyy').format(date);
-    return Center(child: Container(
-      margin: const EdgeInsets.symmetric(vertical: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFF182229), borderRadius: BorderRadius.circular(8)),
-      child: Text(label, style: GoogleFonts.inter(fontSize: 11, color: _kTickSent, fontWeight: FontWeight.w500)),
-    ));
-  }
-}
-
-// ─── Chat Input Bar ───────────────────────────────────────────────────────────
-class _ChatInput extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final bool sending;
-  final VoidCallback onSend;
-  final VoidCallback onPoll;
-  const _ChatInput({required this.controller, required this.focusNode, required this.sending, required this.onSend, required this.onPoll});
-
+// ─── Unread Divider ────────────────────────────────────────────────────────────
+class _UnreadDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFF1F2C34),
-      padding: EdgeInsets.fromLTRB(8, 8, 8, MediaQuery.of(context).padding.bottom + 8),
+      margin: const EdgeInsets.symmetric(vertical: 8),
       child: Row(children: [
-        // Poll button
-        GestureDetector(
-          onTap: onPoll,
-          child: Container(
-            width: 40, height: 40,
-            decoration: BoxDecoration(color: const Color(0xFF2A3C47), shape: BoxShape.circle),
-            child: const Icon(Icons.poll_outlined, color: _kTickSent, size: 20),
+        const Expanded(child: Divider(color: Color(0xFF53BDEB), thickness: 1)),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A2C35),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF53BDEB), width: 1),
           ),
+          child: Text('Unread messages',
+            style: GoogleFonts.inter(fontSize: 11, color: const Color(0xFF53BDEB), fontWeight: FontWeight.w600)),
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Container(
-            decoration: BoxDecoration(color: const Color(0xFF2A3C47), borderRadius: BorderRadius.circular(24)),
-            child: TextField(
-              controller: controller, focusNode: focusNode,
-              maxLines: 4, minLines: 1, maxLength: 500,
-              textCapitalization: TextCapitalization.sentences,
-              style: GoogleFonts.inter(fontSize: 15, color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Message', hintStyle: GoogleFonts.inter(fontSize: 15, color: _kTickSent),
-                counterText: '', border: InputBorder.none, enabledBorder: InputBorder.none,
-                focusedBorder: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                fillColor: Colors.transparent,
-              ),
-              inputFormatters: [LengthLimitingTextInputFormatter(500)],
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: sending ? null : onSend,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 150),
-            width: 44, height: 44,
-            decoration: BoxDecoration(
-              color: _kWaGreen, shape: BoxShape.circle,
-              boxShadow: sending ? [] : [BoxShadow(color: _kWaGreen.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 2))],
-            ),
-            child: sending
-              ? const Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)))
-              : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-          ),
-        ),
+        const Expanded(child: Divider(color: Color(0xFF53BDEB), thickness: 1)),
       ]),
     );
   }
