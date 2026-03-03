@@ -1104,6 +1104,267 @@ class _InlineLinkPreview extends StatelessWidget {
 }
 
 
+// ─── Date Divider ─────────────────────────────────────────────────────────────
+class _DateDivider extends StatelessWidget {
+  final DateTime date;
+  const _DateDivider({required this.date});
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final d = DateTime(date.year, date.month, date.day);
+    String label;
+    if (d == today) {
+      label = 'Today';
+    } else if (d == yesterday) {
+      label = 'Yesterday';
+    } else {
+      label = DateFormat('MMMM d, y').format(date);
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Row(children: [
+        const Expanded(child: Divider(color: Color(0xFF2A3C47), thickness: 1)),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFF182229),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(label, style: GoogleFonts.inter(fontSize: 11, color: _kTickSent, fontWeight: FontWeight.w600)),
+        ),
+        const Expanded(child: Divider(color: Color(0xFF2A3C47), thickness: 1)),
+      ]),
+    );
+  }
+}
+
+// ─── Pinned Banner ────────────────────────────────────────────────────────────
+class _PinnedBanner extends StatelessWidget {
+  final List<Map<String, dynamic>> pins;
+  final void Function(String) onUnpin;
+  final void Function(String) onTap;
+  const _PinnedBanner({required this.pins, required this.onUnpin, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final pin = pins.first;
+    return GestureDetector(
+      onTap: () => onTap(pin['msgId'] as String? ?? ''),
+      child: Container(
+        color: const Color(0xFF1F2C34),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(children: [
+          Container(width: 3, height: 32, color: _kWaGreen, margin: const EdgeInsets.only(right: 10)),
+          const Icon(Icons.push_pin_rounded, size: 14, color: _kWaGreen),
+          const SizedBox(width: 8),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              'Pinned message${pins.length > 1 ? ' (${pins.length})' : ''}',
+              style: GoogleFonts.inter(fontSize: 11, color: _kWaGreen, fontWeight: FontWeight.w600),
+            ),
+            Text(
+              pin['text'] as String? ?? '',
+              style: GoogleFonts.inter(fontSize: 12, color: _kTickSent),
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+            ),
+          ])),
+          IconButton(
+            icon: const Icon(Icons.close_rounded, size: 16, color: _kTickSent),
+            onPressed: () => onUnpin(pin['id'] as String? ?? ''),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Chat Input ───────────────────────────────────────────────────────────────
+class _ChatInput extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final bool sending;
+  final VoidCallback onSend;
+  final VoidCallback onPoll;
+  const _ChatInput({
+    required this.controller, required this.focusNode,
+    required this.sending, required this.onSend, required this.onPoll,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF1F2C34),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+      child: SafeArea(
+        top: false,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          IconButton(
+            icon: const Icon(Icons.poll_outlined, color: _kTickSent),
+            onPressed: onPoll,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Container(
+              constraints: const BoxConstraints(maxHeight: 120),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A3C47),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: TextField(
+                controller: controller,
+                focusNode: focusNode,
+                maxLines: null,
+                style: GoogleFonts.inter(fontSize: 15, color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Message',
+                  hintStyle: GoogleFonts.inter(fontSize: 15, color: _kTickSent),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  border: InputBorder.none,
+                ),
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: sending ? null : onSend,
+            child: Container(
+              width: 42, height: 42,
+              decoration: const BoxDecoration(color: _kWaGreen, shape: BoxShape.circle),
+              child: sending
+                  ? const Padding(
+                      padding: EdgeInsets.all(10),
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Options Sheet ────────────────────────────────────────────────────────────
+class _OptionsSheet extends StatelessWidget {
+  final ChatMessage msg;
+  final bool isMe;
+  final bool canDelete;
+  final bool isPinned;
+  final String myUid;
+  final int memberCount;
+  final void Function(String) onReact;
+  final VoidCallback onReply;
+  final VoidCallback? onEdit;
+  final VoidCallback? onDelete;
+  final VoidCallback onPin;
+
+  const _OptionsSheet({
+    required this.msg, required this.isMe, required this.canDelete,
+    required this.isPinned, required this.myUid, required this.memberCount,
+    required this.onReact, required this.onReply, required this.onPin,
+    this.onEdit, this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFF1F2C34),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 32),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Center(child: Container(
+          width: 36, height: 4, margin: const EdgeInsets.only(bottom: 16),
+          decoration: BoxDecoration(color: _kTickSent.withOpacity(0.4), borderRadius: BorderRadius.circular(2)),
+        )),
+        // Reaction row
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: _kReactionEmojis.map((e) {
+            final isSelected = msg.reactions[myUid] == e;
+            return GestureDetector(
+              onTap: () => onReact(e),
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: isSelected ? _kWaGreen.withOpacity(0.2) : const Color(0xFF2A3C47),
+                  shape: BoxShape.circle,
+                  border: isSelected ? Border.all(color: _kWaGreen, width: 1.5) : null,
+                ),
+                child: Text(e, style: const TextStyle(fontSize: 22)),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 12),
+        const Divider(color: Color(0xFF2A3C47)),
+        // Action tiles
+        _tile(Icons.reply_rounded, 'Reply', onReply),
+        _tile(isPinned ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+              isPinned ? 'Unpin' : 'Pin', onPin),
+        if (onEdit != null) _tile(Icons.edit_rounded, 'Edit', onEdit!),
+        if (onDelete != null)
+          _tile(Icons.delete_outline_rounded, 'Delete', onDelete!, color: AppTheme.error),
+      ]),
+    );
+  }
+
+  Widget _tile(IconData icon, String label, VoidCallback onTap, {Color? color}) {
+    final c = color ?? Colors.white;
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Icon(icon, color: c, size: 22),
+      title: Text(label, style: GoogleFonts.inter(fontSize: 15, color: c)),
+      onTap: onTap,
+    );
+  }
+}
+
+// ─── Preset Message Bubble ────────────────────────────────────────────────────
+class _PresetMessageBubble extends StatelessWidget {
+  final ChatMessage message;
+  const _PresetMessageBubble({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(
+          constraints: const BoxConstraints(maxWidth: 280),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1A2C35),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _kWaGreen.withOpacity(0.5), width: 1),
+          ),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.notifications_outlined, size: 14, color: _kWaGreen),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                message.text,
+                style: GoogleFonts.inter(fontSize: 13.5, color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ]),
+        ),
+      ]),
+    );
+  }
+}
+
 // ─── Unread Divider ────────────────────────────────────────────────────────────
 class _UnreadDivider extends StatelessWidget {
   @override
