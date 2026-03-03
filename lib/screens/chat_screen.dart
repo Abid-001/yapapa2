@@ -917,15 +917,17 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             if (!msg.isDeleted && msg.linkPreview != null && (msg.linkPreview!['title'] ?? '').isNotEmpty)
                               _InlineLinkPreview(preview: msg.linkPreview!),
 
-                            // Time + ticks
+                            // Time + ticks (right-aligned)
                             if (widget.showTime)
                               Padding(
                                 padding: const EdgeInsets.only(top: 4),
-                                child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [
-                                  const Spacer(),
-                                  Text(timeStr, style: GoogleFonts.inter(fontSize: 10, color: _kTickSent)),
-                                  if (ticks != null) ...[const SizedBox(width: 3), ticks],
-                                ]),
+                                child: Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                    Text(timeStr, style: GoogleFonts.inter(fontSize: 10, color: _kTickSent)),
+                                    if (ticks != null) ...[const SizedBox(width: 3), ticks],
+                                  ]),
+                                ),
                               ),
                           ]),
                         ),
