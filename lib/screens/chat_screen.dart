@@ -943,37 +943,128 @@ class _MessageBubbleState extends State<_MessageBubble> {
                         child: Padding(
                           padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                           child: IntrinsicWidth(
-                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import '../theme/app_theme.dart';
-import '../services/auth_service.dart';
-import '../models/chat_message.dart';
-import '../models/user_model.dart';
-import '../widgets/common_widgets.dart';
-import 'member_profile_screen.dart';
+                            child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                              // Sender name (others only)
+                              if (!widget.isMe && !msg.isDeleted)
+                                GestureDetector(
+                                  onTap: () => _openProfile(context),
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(bottom: 3),
+                                    child: Text(msg.senderName,
+                                      style: GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w700,
+                                        color: _nameColor(msg.senderName))),
+                                  ),
+                                ),
 
-// ── WhatsApp-style colors ──────────────────────────────────────────────────────
-const _kMyBubble     = Color(0xFF005C4B);
-const _kTheirBubble  = Color(0xFF1F2C34);
-const _kChatBg       = Color(0xFF0B141A);
-const _kReplyMyBg    = Color(0xFF025144);
-const _kReplyTheirBg = Color(0xFF182229);
-const _kTickSent     = Color(0xFF8696A0);
-const _kTickSeen     = Color(0xFF53BDEB);
-const _kWaGreen      = Color(0xFF00A884);
+                              // Reply preview
+                              if (!msg.isDeleted && msg.replyToText != null)
+                                Container(
+                                  margin: const EdgeInsets.only(bottom: 6),
+                                  padding: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+                                  decoration: BoxDecoration(
+                                    color: widget.isMe ? _kReplyMyBg : _kReplyTheirBg,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border(left: BorderSide(
+                                      color: widget.isMe ? const Color(0xFF4FCDA5) : _kWaGreen,
+                                      width: 3,
+                                    )),
+                                  ),
+                                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                    Text(msg.replyToSender ?? '',
+                                      style: GoogleFonts.inter(fontSize: 11, fontWeight: FontWeight.w700,
+                                        color: widget.isMe ? const Color(0xFF4FCDA5) : _kWaGreen)),
+                                    Text(msg.replyToText!,
+                                      style: GoogleFonts.inter(fontSize: 12, color: _kTickSent),
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  ]),
+                                ),
 
-// Single emoji check (no ASCII letters/digits, non-ASCII chars present)
-bool _isSingleEmoji(String text) {
-  final t = text.trim();
-  if (t.isEmpty || t.length > 8) return false;
-  if (RegExp(r'[a-zA-Z0-9 ]').hasMatch(t)) return false;
-  return t.runes.any((r) => r > 127);
+                              // Poll bubble or text
+                              if (msg.isPoll)
+                                _PollBubble(msg: msg, myUid: widget.myUid, onVote: widget.onVote)
+                              else
+                                Text(
+                                  msg.isDeleted ? 'This message was removed.' : msg.text,
+                                  style: GoogleFonts.inter(
+                                    fontSize: 14.5,
+                                    color: msg.isDeleted ? _kTickSent : Colors.white,
+                                    fontStyle: msg.isDeleted ? FontStyle.italic : FontStyle.normal,
+                                    height: 1.35,
+                                  ),
+                                ),
+
+                              // Link preview
+                              if (!msg.isDeleted && msg.linkPreview != null)
+                                _InlineLinkPreview(preview: msg.linkPreview!),
+
+                              // Edited label
+                              if (!msg.isDeleted && msg.editedText != null)
+                                Text(' (edited)',
+                                  style: GoogleFonts.inter(fontSize: 10, color: _kTickSent, fontStyle: FontStyle.italic)),
+
+                              // Time + ticks row
+                              if (widget.showTime)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 3),
+                                  child: Row(mainAxisSize: MainAxisSize.min, mainAxisAlignment: MainAxisAlignment.end, children: [
+                                    const Spacer(),
+                                    Text(timeStr, style: GoogleFonts.inter(fontSize: 10, color: _kTickSent)),
+                                    if (ticks != null) ...[const SizedBox(width: 3), ticks!],
+                                  ]),
+                                ),
+                            ]),      // Column
+                          ),         // IntrinsicWidth
+                        ),           // Padding
+                      ),             // Container (bubble)
+                    ),               // GestureDetector (long press)
+
+                    // ── Reactions pill (WA-style) ──────────────────────────
+                    if (reactionCounts.isNotEmpty)
+                      GestureDetector(
+                        onTap: () => _showWhoReacted(context, msg.reactions),
+                        child: Container(
+                          margin: EdgeInsets.only(
+                            top: 3,
+                            left: widget.isMe ? 0 : 8,
+                            right: widget.isMe ? 8 : 0,
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A2433),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Row(mainAxisSize: MainAxisSize.min, children: [
+                            ...reactionCounts.keys.take(3).map((e) => Text(e, style: const TextStyle(fontSize: 13))),
+                            if (reactionCounts.values.fold(0, (a, b) => a + b) > 1) ...[
+                              const SizedBox(width: 4),
+                              Text(
+                                '${reactionCounts.values.fold(0, (a, b) => a + b)}',
+                                style: GoogleFonts.inter(fontSize: 11, color: Colors.white70),
+                              ),
+                            ],
+                          ]),
+                        ),
+                      ),
+                  ],        // Flexible Column children
+                ),          // Column
+              ),             // Flexible
+
+              if (widget.isMe) const SizedBox(width: 4),
+            ],              // Row children
+          ),                // Row
+        ),                  // Transform.translate
+      ),                    // GestureDetector (swipe)
+    );
+  }
+
+  Color _nameColor(String name) {
+    const colors = [
+      Color(0xFF53BDEB), Color(0xFF4FCDA5), Color(0xFFFC8E40),
+      Color(0xFFD176D4), Color(0xFF5DC7F1), Color(0xFFBE9FE1),
+    ];
+    return colors[name.hashCode.abs() % colors.length];
+  }
 }
-
-const _kReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
-
 
 class _InlineLinkPreview extends StatelessWidget {
   final Map<String, String> preview;
