@@ -41,6 +41,10 @@ dependencies:
   url_launcher: ^6.3.1
   connectivity_plus: ^6.1.1
 
+  # Link preview + share intent
+  http: ^1.2.1
+  receive_sharing_intent: ^2.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

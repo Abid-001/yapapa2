@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
+import '../models/group_model.dart';
 import '../widgets/common_widgets.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
@@ -261,7 +262,36 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 24),
+
+              // ── Preset Polls ──────────────────────────────────────────────
+              _SectionTitle('Preset Polls'),
+              const SizedBox(height: 4),
+              Text(
+                'Members can use these pre-made polls in chat.',
+                style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 10),
+              _PresetPollsEditor(groupId: group.groupId),
+              const SizedBox(height: 24),
+
+              // ── Monthly Reminders ─────────────────────────────────────────
+              _SectionTitle('Monthly Reminders'),
+              const SizedBox(height: 4),
+              Text(
+                'Show reminder banners on the home screen during a date window each month. Max 3 reminders.',
+                style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 10),
+              _RemindersEditor(
+                reminders: group.monthlyReminders,
+                onSave: (reminders) async {
+                  await auth.updateMonthlyReminders(reminders);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reminders updated!')));
+                },
+              ),
+
             ],
 
             // ── Members list ──────────────────────────────────────────────
@@ -798,6 +828,253 @@ class _InfoRow extends StatelessWidget {
           if (trailing != null) trailing!,
         ],
       ),
+    );
+  }
+}
+
+// ─── Preset Polls Editor ──────────────────────────────────────────────────────
+class _PresetPollsEditor extends StatefulWidget {
+  final String groupId;
+  const _PresetPollsEditor({required this.groupId});
+  @override
+  State<_PresetPollsEditor> createState() => _PresetPollsEditorState();
+}
+
+class _PresetPollsEditorState extends State<_PresetPollsEditor> {
+  final _db = FirebaseFirestore.instance;
+  List<Map<String, dynamic>> _polls = [];
+  bool _loading = true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    try {
+      final snap = await _db.collection('groups').doc(widget.groupId).collection('presetPolls').get();
+      if (mounted) setState(() {
+        _polls = snap.docs.map((d) { final m = d.data(); m['id'] = d.id; return m; }).toList();
+        _loading = false;
+      });
+    } catch (_) { if (mounted) setState(() => _loading = false); }
+  }
+
+  Future<void> _delete(String id) async {
+    await _db.collection('groups').doc(widget.groupId).collection('presetPolls').doc(id).delete();
+    setState(() => _polls.removeWhere((p) => p['id'] == id));
+  }
+
+  void _showEditDialog([Map<String, dynamic>? existing]) {
+    final qCtrl = TextEditingController(text: existing?['question'] ?? '');
+    final opts = existing != null ? List<TextEditingController>.from(
+      (existing['options'] as List).map((o) => TextEditingController(text: o.toString()))
+    ) : [TextEditingController(), TextEditingController()];
+    bool multi = existing?['allowMultiple'] ?? false;
+    String? err;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, ss) => AlertDialog(
+        title: Text(existing != null ? 'Edit Preset Poll' : 'Add Preset Poll', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          TextField(controller: qCtrl, decoration: const InputDecoration(hintText: 'Poll question'), maxLength: 100),
+          const SizedBox(height: 12),
+          ...List.generate(opts.length, (i) => Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(children: [
+              Expanded(child: TextField(controller: opts[i], decoration: InputDecoration(hintText: 'Option ${i + 1}'))),
+              if (i >= 2) IconButton(
+                icon: const Icon(Icons.remove_circle_outline_rounded, size: 18, color: AppTheme.error),
+                onPressed: () { ss(() { opts[i].dispose(); opts.removeAt(i); }); },
+                padding: EdgeInsets.zero,
+              ),
+            ]),
+          )),
+          if (opts.length < 10)
+            TextButton.icon(
+              icon: const Icon(Icons.add_rounded, size: 16),
+              label: const Text('Add option'),
+              onPressed: () => ss(() => opts.add(TextEditingController())),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero),
+            ),
+          Row(children: [
+            Switch(value: multi, onChanged: (v) => ss(() => multi = v), activeColor: AppTheme.primary),
+            const Text('Allow multiple answers'),
+          ]),
+          if (err != null) Text(err!, style: const TextStyle(color: AppTheme.error, fontSize: 12)),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () async {
+              final q = qCtrl.text.trim();
+              final options = opts.map((c) => c.text.trim()).where((s) => s.isNotEmpty).toList();
+              if (q.isEmpty) { ss(() => err = 'Enter a question.'); return; }
+              if (options.length < 2) { ss(() => err = 'Add at least 2 options.'); return; }
+              final data = {'question': q, 'options': options, 'allowMultiple': multi};
+              if (existing != null) {
+                await _db.collection('groups').doc(widget.groupId).collection('presetPolls').doc(existing['id']).update(data);
+              } else {
+                await _db.collection('groups').doc(widget.groupId).collection('presetPolls').add(data);
+              }
+              Navigator.pop(ctx);
+              _load();
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      )),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Center(child: CircularProgressIndicator(color: AppTheme.primary, strokeWidth: 2));
+    return GradientCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (_polls.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('No preset polls yet.', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textHint)),
+          ),
+        ..._polls.map((p) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(children: [
+            const Icon(Icons.poll_outlined, size: 18, color: AppTheme.primary),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(p['question'] ?? '', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+              Text('${(p['options'] as List?)?.length ?? 0} options${p['allowMultiple'] == true ? ' · multiple' : ''}',
+                style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textSecondary)),
+            ])),
+            IconButton(icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.textSecondary), onPressed: () => _showEditDialog(p), padding: EdgeInsets.zero),
+            IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.error), onPressed: () => _delete(p['id']), padding: EdgeInsets.zero),
+          ]),
+        )),
+        TextButton.icon(
+          onPressed: () => _showEditDialog(),
+          icon: const Icon(Icons.add_rounded, size: 16, color: AppTheme.primary),
+          label: Text('Add Preset Poll', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.primary)),
+          style: TextButton.styleFrom(padding: EdgeInsets.zero),
+        ),
+      ]),
+    );
+  }
+}
+
+// ─── Monthly Reminders Editor ─────────────────────────────────────────────────
+class _RemindersEditor extends StatefulWidget {
+  final List<MonthlyReminder> reminders;
+  final void Function(List<MonthlyReminder>) onSave;
+  const _RemindersEditor({required this.reminders, required this.onSave});
+  @override
+  State<_RemindersEditor> createState() => _RemindersEditorState();
+}
+
+class _RemindersEditorState extends State<_RemindersEditor> {
+  late List<MonthlyReminder> _reminders;
+
+  @override
+  void initState() { super.initState(); _reminders = List.from(widget.reminders); }
+
+  void _showEditDialog([MonthlyReminder? existing, int? idx]) {
+    final textCtrl = TextEditingController(text: existing?.text ?? '');
+    int startDay = existing?.startDay ?? 1;
+    int endDay = existing?.endDay ?? 10;
+    String? err;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, ss) => AlertDialog(
+        title: Text(existing != null ? 'Edit Reminder' : 'Add Reminder', style: GoogleFonts.inter(fontWeight: FontWeight.w700)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: textCtrl, maxLines: 3, maxLength: 200,
+            decoration: const InputDecoration(hintText: 'Reminder message shown on home screen...')),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: Column(children: [
+              Text('From day', style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary)),
+              const SizedBox(height: 4),
+              DropdownButton<int>(
+                value: startDay,
+                isExpanded: true,
+                items: List.generate(28, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+                onChanged: (v) => ss(() => startDay = v ?? 1),
+              ),
+            ])),
+            const SizedBox(width: 16),
+            Expanded(child: Column(children: [
+              Text('To day', style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary)),
+              const SizedBox(height: 4),
+              DropdownButton<int>(
+                value: endDay,
+                isExpanded: true,
+                items: List.generate(28, (i) => DropdownMenuItem(value: i + 1, child: Text('${i + 1}'))),
+                onChanged: (v) => ss(() => endDay = v ?? 10),
+              ),
+            ])),
+          ]),
+          if (err != null) Padding(padding: const EdgeInsets.only(top: 6), child: Text(err!, style: const TextStyle(color: AppTheme.error, fontSize: 12))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final t = textCtrl.text.trim();
+              if (t.isEmpty) { ss(() => err = 'Enter reminder text.'); return; }
+              if (endDay < startDay) { ss(() => err = 'End day must be ≥ start day.'); return; }
+              final r = MonthlyReminder(text: t, startDay: startDay, endDay: endDay);
+              setState(() {
+                if (idx != null) _reminders[idx] = r;
+                else _reminders.add(r);
+              });
+              widget.onSave(_reminders);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      )),
+    );
+  }
+
+  void _delete(int idx) {
+    setState(() => _reminders.removeAt(idx));
+    widget.onSave(_reminders);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GradientCard(
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (_reminders.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text('No reminders set.', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textHint)),
+          ),
+        ..._reminders.asMap().entries.map((e) => Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Icon(Icons.notifications_active_rounded, size: 18, color: AppTheme.accentOrange),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(e.value.text, style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textPrimary), maxLines: 2, overflow: TextOverflow.ellipsis),
+              Text('Day ${e.value.startDay} – ${e.value.endDay} every month',
+                style: GoogleFonts.inter(fontSize: 11, color: AppTheme.textSecondary)),
+            ])),
+            IconButton(icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.textSecondary), onPressed: () => _showEditDialog(e.value, e.key), padding: EdgeInsets.zero),
+            IconButton(icon: const Icon(Icons.delete_outline_rounded, size: 16, color: AppTheme.error), onPressed: () => _delete(e.key), padding: EdgeInsets.zero),
+          ]),
+        )),
+        if (_reminders.length < 3)
+          TextButton.icon(
+            onPressed: () => _showEditDialog(),
+            icon: const Icon(Icons.add_rounded, size: 16, color: AppTheme.accentOrange),
+            label: Text('Add Reminder', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.accentOrange)),
+            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+          ),
+        if (_reminders.length >= 3)
+          Text('Max 3 reminders reached.', style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textHint)),
+      ]),
     );
   }
 }

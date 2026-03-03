@@ -29,32 +29,35 @@ class _MainShellState extends State<MainShell> {
 
   List<Widget> get _screens => [
     HomeScreen(
-      onGoToChat: () => setState(() => _currentIndex = 4),
-      onGoToBudget: () => setState(() => _currentIndex = 1),
-      onGoToScreentime: () => setState(() => _currentIndex = 2),
-      onGoToLeaderboard: () => setState(() => _currentIndex = 3),
+      onGoToChat: () => setState(() => _currentIndex = 1),
+      onGoToBudget: _showBudgetModal,
+      onGoToScreentime: _showScreentimeModal,
+      onGoToLeaderboard: _showLeaderboardModal,
     ),
-    const BudgetScreen(),
-    const ScreentimeScreen(),
-    const LeaderboardScreen(),
     const ChatScreen(),
   ];
 
   final List<String> _titles = [
     'Home',
-    'Budget',
-    'Screentime',
-    'Leaderboard',
     'Chat',
   ];
 
   final List<IconData> _icons = [
     Icons.home_rounded,
-    Icons.account_balance_wallet_rounded,
-    Icons.phone_android_rounded,
-    Icons.leaderboard_rounded,
     Icons.chat_bubble_outline_rounded,
   ];
+
+  void _showBudgetModal() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const BudgetScreen()));
+  }
+
+  void _showScreentimeModal() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const ScreentimeScreen()));
+  }
+
+  void _showLeaderboardModal() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const LeaderboardScreen()));
+  }
 
   @override
   void initState() {
@@ -132,50 +135,6 @@ class _MainShellState extends State<MainShell> {
           ),
         ),
         actions: [
-          // Bell icon — shows received preset notifications inbox
-          IconButton(
-            onPressed: _showNotificationsInbox,
-            icon: Stack(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceElevated,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(
-                    Icons.notifications_outlined,
-                    size: 20,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-                if (_notifCount > 0)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 14,
-                      height: 14,
-                      decoration: const BoxDecoration(
-                        color: AppTheme.error,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          _notifCount > 9 ? '9+' : '$_notifCount',
-                          style: const TextStyle(
-                              fontSize: 8,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            tooltip: 'Notifications',
-          ),
           // Settings icon
           IconButton(
             onPressed: () => Navigator.push(

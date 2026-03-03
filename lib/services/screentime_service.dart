@@ -51,19 +51,16 @@ class ScreentimeService {
   Future<Map<String, int>> getRawAppUsage(DateTime start, DateTime end) async {
     try {
       final usage = await AppUsage().getAppUsage(start, end);
+      // Cap per-app minutes to the window size — Android sometimes gives full-day stats
+      final windowMinutes = end.difference(start).inMinutes.clamp(0, 1440);
       final Map<String, int> result = {};
       for (final info in usage) {
-        final minutes = info.usage.inMinutes;
+        // Cap each app's time to the window too
+        final minutes = info.usage.inMinutes.clamp(0, windowMinutes);
         if (minutes < 1) continue;
-        // Try known map first
         String name = _knownApps[info.packageName] ?? '';
-        // If not known, use appName from the package (may already be clean)
-        if (name.isEmpty) {
-          name = info.appName;
-        }
-        // If still looks like a package name (contains dots, lowercase), clean it up
+        if (name.isEmpty) name = info.appName;
         if (name.contains('.') && name == name.toLowerCase()) {
-          // Extract last segment and capitalize
           final parts = name.split('.');
           name = parts.last
               .replaceAll('_', ' ')
@@ -71,11 +68,16 @@ class ScreentimeService {
               .map((w) => w.isEmpty ? '' : w[0].toUpperCase() + w.substring(1))
               .join(' ');
         }
-        // Skip system junk
         if (name.isEmpty || name.toLowerCase() == 'android' ||
             name.toLowerCase().contains('launcher')) continue;
-        // Merge duplicates (same friendly name)
         result[name] = (result[name] ?? 0) + minutes;
+      }
+      // Final safety: cap total to window size
+      final total = result.values.fold(0, (a, b) => a + b);
+      if (total > windowMinutes) {
+        // Scale down proportionally
+        final scale = windowMinutes / total;
+        return result.map((k, v) => MapEntry(k, (v * scale).round()));
       }
       return result;
     } catch (_) {
@@ -158,7 +160,10 @@ class ScreentimeService {
       final now = DateTime.now();
       final dayStart = DateTime(now.year, now.month, now.day);
       final appUsage = await getRawAppUsage(dayStart, now);
-      final totalMinutes = appUsage.values.fold(0, (a, b) => a + b);
+      final rawTotal = appUsage.values.fold(0, (a, b) => a + b);
+      // Hard cap: cannot use more time than has elapsed since midnight
+      final elapsedMinutes = now.difference(dayStart).inMinutes.clamp(0, 1440);
+      final totalMinutes = rawTotal.clamp(0, elapsedMinutes);
 
       final id = '${uid}_${dayStart.toIso8601String().substring(0, 10)}';
       final model = ScreentimeModel(

@@ -68,6 +68,7 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
     final hCtrl = TextEditingController(text: existingH > 0 ? existingH.toString() : '');
     final mCtrl = TextEditingController(text: existingM > 0 ? existingM.toString() : '');
     final hFocus = FocusNode();
+    final mFocus = FocusNode();
     String? dialogError;
     WidgetsBinding.instance.addPostFrameCallback((_) => hFocus.requestFocus());
     showDialog(
@@ -93,24 +94,43 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
                       focusNode: hFocus,
                       autofocus: true,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.next,
                       inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
+                      onEditingComplete: () {
+                        // Move focus to mins, keep keyboard open
+                        FocusScope.of(ctx).requestFocus(mFocus);
+                      },
+                      decoration: InputDecoration(
                         hintText: '0',
-                        suffixText: 'h',
-                        prefixIcon: Icon(Icons.timer_outlined),
+                        suffix: Text('h', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Colors.white, width: 1.5),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: AppTheme.primary, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: AppTheme.surfaceElevated,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(':', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700, color: AppTheme.textSecondary)),
+                  ),
                   // Mins box
                   Expanded(
                     child: TextField(
                       controller: mCtrl,
+                      focusNode: mFocus,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        // Max 59 minutes
                         TextInputFormatter.withFunction((old, newVal) {
                           final v = int.tryParse(newVal.text) ?? 0;
                           if (v > 59) return old;
@@ -118,9 +138,23 @@ class _ScreentimeScreenState extends State<ScreentimeScreen>
                         }),
                       ],
                       textAlign: TextAlign.center,
-                      decoration: const InputDecoration(
-                        hintText: '0',
-                        suffixText: 'min',
+                      onEditingComplete: () {
+                        FocusScope.of(ctx).unfocus();
+                      },
+                      decoration: InputDecoration(
+                        hintText: '00',
+                        suffix: Text('min', style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary)),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Colors.white, width: 1.5),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(color: AppTheme.primary, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: AppTheme.surfaceElevated,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                     ),
                   ),
@@ -714,15 +748,35 @@ class PokeSheet extends StatefulWidget {
 class _PokeSheetState extends State<PokeSheet> {
   bool _sent = false;
   bool _loading = false;
+  bool _alreadyPoked = false;
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   Future<void> _sendPoke(BuildContext context) async {
     setState(() => _loading = true);
     try {
-      // Need current user's name to show in notification
       final auth = context.read<AuthService>();
       final fromName = auth.currentUser?.username ?? 'Someone';
       final fromUid = auth.currentUser?.uid ?? '';
+      // Check: already poked this person today?
+      final todayStart = DateTime.now();
+      final midnight = DateTime(todayStart.year, todayStart.month, todayStart.day)
+          .millisecondsSinceEpoch;
+      final existing = await _db
+          .collection('groups')
+          .doc(widget.groupId)
+          .collection('pokes')
+          .where('fromUid', isEqualTo: fromUid)
+          .where('targetUid', isEqualTo: widget.targetUid)
+          .where('timestamp', isGreaterThanOrEqualTo: midnight)
+          .limit(1)
+          .get();
+      if (existing.docs.isNotEmpty) {
+        if (mounted) setState(() {
+          _alreadyPoked = true;
+          _loading = false;
+        });
+        return;
+      }
       await _db
           .collection('groups')
           .doc(widget.groupId)
@@ -791,6 +845,24 @@ class _PokeSheetState extends State<PokeSheet> {
                 onPressed: () => Navigator.pop(context),
                 child: const Text('Done'),
               ),
+            ),
+          ] else if (_alreadyPoked) ...[
+            const Icon(Icons.block_rounded, color: AppTheme.textHint, size: 48),
+            const SizedBox(height: 14),
+            Text(
+              'Already poked today!',
+              style: GoogleFonts.inter(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'You can only poke ${widget.targetName} once per day.',
+              textAlign: TextAlign.center,
+              style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(onPressed: () => Navigator.pop(context), child: const Text('OK')),
             ),
           ] else ...[
             Text(

@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/budget_service.dart';
 import '../models/expense_model.dart';
+import '../models/group_model.dart';
 import '../widgets/common_widgets.dart';
 import 'preset_notification_sheet.dart';
 
@@ -49,7 +50,15 @@ class _HomeScreenState extends State<HomeScreen> {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           _WelcomeRow(username: user.username, isAdmin: user.isAdmin),
-          const SizedBox(height: 20),
+          const SizedBox(height: 12),
+
+          // ── Monthly reminder banners ────────────────────────────────────
+          ..._activeReminders(group.monthlyReminders).map((r) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _ReminderBanner(text: r.text),
+          )),
+
+          const SizedBox(height: 8),
           _InviteCodeCard(code: group.inviteCode),
           const SizedBox(height: 20),
 
@@ -93,6 +102,52 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ]),
       ),
+    );
+  }
+}
+
+// ── Reminder helper ───────────────────────────────────────────────────────────
+List<MonthlyReminder> _activeReminders(List<MonthlyReminder> all) {
+  final today = DateTime.now().day;
+  return all.where((r) => today >= r.startDay && today <= r.endDay).toList();
+}
+
+// ── Reminder Banner ───────────────────────────────────────────────────────────
+class _ReminderBanner extends StatelessWidget {
+  final String text;
+  const _ReminderBanner({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppTheme.accentOrange.withOpacity(0.18), AppTheme.accentYellow.withOpacity(0.10)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.accentOrange.withOpacity(0.35)),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 1),
+          child: Icon(Icons.notifications_active_rounded, size: 18, color: AppTheme.accentOrange),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            text,
+            style: GoogleFonts.inter(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.textPrimary,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ]),
     );
   }
 }

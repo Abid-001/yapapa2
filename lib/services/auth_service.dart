@@ -184,11 +184,16 @@ class AuthService extends ChangeNotifier {
       }
       final now = DateTime.now();
 
+      // Check if the solo admin left and we should make this new joiner admin
+      final awaitingTransfer = groupData['awaitingAdminTransfer'] == true;
+      final originalAdminUid = groupData['originalAdminUid'] as String?;
+      final becomeAdmin = awaitingTransfer;
+
       final user = UserModel(
         uid: uid,
         username: username.trim(),
         groupId: group.groupId,
-        isAdmin: false,
+        isAdmin: becomeAdmin,
         joinedAt: now,
         phoneNumber: phoneNumber.trim(),
       );
@@ -198,14 +203,25 @@ class AuthService extends ChangeNotifier {
       final batch = _db.batch();
       batch.set(_db.collection('users').doc(uid), user.toMap());
       batch.set(_db.collection('pins').doc(uid), {'pin': pinHash});
-      batch.update(_db.collection('groups').doc(group.groupId), {
+      final groupUpdate = <String, dynamic>{
         'memberUids': FieldValue.arrayUnion([uid]),
-      });
+      };
+      if (becomeAdmin) {
+        // Transfer admin to new joiner; demote original admin
+        groupUpdate['adminUid'] = uid;
+        groupUpdate['awaitingAdminTransfer'] = FieldValue.delete();
+        groupUpdate['originalAdminUid'] = FieldValue.delete();
+        if (originalAdminUid != null) {
+          batch.update(_db.collection('users').doc(originalAdminUid), {'isAdmin': false});
+        }
+      }
+      batch.update(_db.collection('groups').doc(group.groupId), groupUpdate);
 
       await batch.commit();
 
       final updatedGroup = group.copyWith(
         memberUids: [...group.memberUids, uid],
+        adminUid: becomeAdmin ? uid : group.adminUid,
       );
 
       _currentUser = user;
@@ -354,7 +370,17 @@ class AuthService extends ChangeNotifier {
     } catch (_) {}
   }
 
-    Future<void> updateExpenseTypes(List<String> types) async {
+  
+  Future<void> updateMonthlyReminders(List<MonthlyReminder> reminders) async {
+    if (_currentGroup == null) return;
+    await _db.collection('groups').doc(_currentGroup!.groupId).update({
+      'monthlyReminders': reminders.map((r) => r.toMap()).toList(),
+    });
+    _currentGroup = _currentGroup!.copyWith(monthlyReminders: reminders);
+    notifyListeners();
+  }
+
+  Future<void> updateExpenseTypes(List<String> types) async {
     if (_currentGroup == null) return;
     try {
       await _db.collection('groups').doc(_currentGroup!.groupId).update({
@@ -379,6 +405,17 @@ class AuthService extends ChangeNotifier {
 
   Future<void> logout() async {
     _listenerService.stopListening();
+    // If solo admin logs out, flag the group so next joiner becomes admin
+    try {
+      final user = _currentUser;
+      final group = _currentGroup;
+      if (user != null && group != null && user.isAdmin && group.memberUids.length == 1) {
+        await _db.collection('groups').doc(group.groupId).update({
+          'awaitingAdminTransfer': true,
+          'originalAdminUid': user.uid,
+        });
+      }
+    } catch (_) {}
     await _clearSession();
     await _auth.signOut();
     _currentUser = null;
