@@ -28,10 +28,16 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: Verify Flutter install
+        run: |
+          flutter --version
+          dart --version
+
       - name: Write local.properties
         run: |
           echo "flutter.sdk=$FLUTTER_ROOT" > android/local.properties
           echo "sdk.dir=$ANDROID_HOME" >> android/local.properties
+          cat android/local.properties
 
       - name: Create google-services.json
         run: echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > android/app/google-services.json
@@ -42,19 +48,36 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze (catch Dart errors before build)
+        run: flutter analyze --no-fatal-infos 2>&1 | tee analyze_log.txt || true
+
       - name: Build APK (release)
-        run: flutter build apk --release 2>&1 | tee build_log.txt; exit ${PIPESTATUS[0]}
+        shell: bash
+        run: |
+          touch build_log.txt
+          set -o pipefail
+          flutter build apk --release --verbose 2>&1 | tee build_log.txt
 
-      - name: Show last 100 lines on failure
+      - name: Show analyze log on failure
         if: failure()
-        run: tail -100 build_log.txt
+        run: |
+          echo "=== ANALYZE LOG ==="
+          cat analyze_log.txt || echo "(no analyze log)"
 
-      - name: Upload full log on failure
+      - name: Show last 150 lines of build log on failure
+        if: failure()
+        run: |
+          echo "=== BUILD LOG (last 150 lines) ==="
+          tail -150 build_log.txt || echo "(build_log.txt is empty or missing)"
+
+      - name: Upload logs on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build_log.txt
+          name: build-logs
+          path: |
+            build_log.txt
+            analyze_log.txt
 
       - name: Upload APK
         if: success()
