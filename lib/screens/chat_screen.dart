@@ -9,7 +9,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
-import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../models/chat_message.dart';
@@ -57,7 +56,6 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _lastCheckedUrl;
 
   // Share from other apps
-  StreamSubscription? _shareSub;
 
   @override
   void initState() {
@@ -66,7 +64,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _listenPins();
     _cleanExpiredMessages();
     _loadPresetPolls();
-    _setupShareListener();
     _msgCtrl.addListener(_onTextChanged);
   }
 
@@ -77,7 +74,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollCtrl.dispose();
     _focusNode.dispose();
     _linkTimer?.cancel();
-    _shareSub?.cancel();
     super.dispose();
   }
 
@@ -85,22 +81,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String get _myUid => context.read<AuthService>().currentUser?.uid ?? '';
   int get _memberCount => context.read<AuthService>().currentGroup?.memberUids.length ?? 1;
 
-  // ── Share from other apps ────────────────────────────────────────────────────
-  void _setupShareListener() {
-    // v1.x uses static methods (no .instance)
-    _shareSub = ReceiveSharingIntent.getTextStream().listen((text) {
-      if (text != null && text.isNotEmpty) {
-        _msgCtrl.text = text;
-        _focusNode.requestFocus();
-      }
-    });
-    ReceiveSharingIntent.getInitialText().then((text) {
-      if (text != null && text.isNotEmpty) {
-        _msgCtrl.text = text;
-        _focusNode.requestFocus();
-      }
-    });
-  }
+
 
   // ── Link preview detection ────────────────────────────────────────────────────
   void _onTextChanged() {
